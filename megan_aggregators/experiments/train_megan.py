@@ -44,7 +44,7 @@ random.seed(3)
 PATH = pathlib.Path(__file__).parent.absolute()
 
 SHORT_DESCRIPTION = (
-    'This will be the short description when listing the experiments from the command line'
+    'Trains a MEGAN model on the aggregators_binary dataset and visualizes explanations'
 )
 
 # == DATASET PARAMETERS ==
@@ -63,7 +63,7 @@ NUM_TEST: int = 3000
 # :param NUM_EXAMPLES:
 #       The number of examples *from the test set*, whose explanations should be visualized in the final PDF
 #       If this number is smaller than the test size, elements will be selected randomly.
-NUM_EXAMPLES: int = 300
+NUM_EXAMPLES: int = 500
 
 # == MODEL PARAMETERS ==
 # :param UNITS:
@@ -89,7 +89,7 @@ IMPORTANCE_MULTIPLIER = 1.8
 IMPORTANCE_UNITS = [32]
 # :param SPARSITY_FACTOR:
 #       The coefficient for the sparsity regularization loss.
-SPARSITY_FACTOR = 6.0
+SPARSITY_FACTOR = 5.0
 # :param CONCAT_HEADS:
 #       A boolean flag which determines how the MEGAN attention heads behave. For True, the individual
 #       results of the attention heads are concatenated. For False, the individual results are averaged.
@@ -108,7 +108,7 @@ FINAL_UNITS = [32, 16, 2]
 DEVICE = 'cpu:0'
 # :param EPOCHS:
 #       The number of epochs to train the network for
-EPOCHS = 10
+EPOCHS = 25
 # :param BATCH_SIZE:
 #       The number of elements to be used in one batch during the training process. smaller batch sizes
 #       have turned out to work better.
@@ -147,7 +147,7 @@ with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
         logger=e.logger,
         log_step=LOG_STEP_EVAL,
         metadata_contains_index=True,
-        subset=40000,
+        #subset=40000,
     )
     dataset_size = len(index_data_map)
     index_max = max(index_data_map.keys())

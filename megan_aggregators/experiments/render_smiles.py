@@ -1,5 +1,5 @@
 """
-This string will be saved to the experiment's archive folder as the "experiment description"
+This experiment renders a list os SMILES strings into PNG images, which can then be used in visualizations
 
 CHANGELOG
 
@@ -22,7 +22,7 @@ mpl.use('TkAgg')
 PATH = pathlib.Path(__file__).parent.absolute()
 
 SHORT_DESCRIPTION = (
-    'This will be the short description when listing the experiments from the command line'
+    'Renders a list of smiles as images, which can be used in visualizations'
 )
 
 # == GENERATION PARAMETERS ==
