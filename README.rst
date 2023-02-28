@@ -54,7 +54,7 @@ Downloading the Dataset
 -----------------------
 
 The ``aggregators_binary`` dataset can be downloaded from the following URL:
-
+https://bwsyncandshare.kit.edu/s/pGExzNEkjbadKHw
 It is in the format of a VisualGraphDataset_, which means that the dataset is represented as a folder
 where each element is represented by two files: One JSON file which contains the entire pre-processed graph
 representation of the corresponding element, and one PNG file which depicts a visualization of the molecule
