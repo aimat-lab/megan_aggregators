@@ -1,3 +1,6 @@
+"""
+Module containing various utility methods.
+"""
 import os
 import shutil
 import pathlib
@@ -5,15 +8,27 @@ import logging
 import tempfile
 import subprocess
 from typing import List
+import typing as t
 
 import click
 import jinja2 as j2
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow.keras as ks
+from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_auc_score
+
+from graph_attention_student.keras import CUSTOM_OBJECTS
 
 
 PATH = pathlib.Path(__file__).parent.absolute()
 VERSION_PATH = os.path.join(PATH, 'VERSION')
 EXPERIMENTS_PATH = os.path.join(PATH, 'experiments')
 TEMPLATES_PATH = os.path.join(PATH, 'templates')
+
+# 18.04.2023 - Decided that it would make sense to ship one version of the fully trained model instead of
+# always having to train one.
+MODEL_PATH = os.path.join(PATH, 'model')
 
 # Use this jinja2 environment to conveniently load the jinja templates which are defined as files within the
 # "templates" folder of the package!
@@ -115,3 +130,90 @@ def render_latex(kwargs: dict,
         pdf_file_path = os.path.join(temp_path, 'main.pdf')
         shutil.copy(pdf_file_path, output_path)
 
+
+def plot_roc_curve(ax: plt.Axes,
+                   y_true: np.ndarray,
+                   y_pred: np.ndarray,
+                   pos_label: t.Optional[int] = None,
+                   label: t.Optional[str] = None,
+                   show_label_auc: bool = True,
+                   color: str = 'orange',
+                   show_reference: bool = True,
+                   reference_color: str = 'lightgray'
+                   ) -> t.Tuple[np.ndarray, np.ndarray]:
+    """
+    Plots an ROC curve onto the given Axes ``ax`` based on the true binary labels ``y_true`` and the
+    predicted labels ``y_pred``. Will also return the arrays for the false positive ratio and the true
+    positive ratio, on which the ROC curve is based.
+
+    :param ax: The matplotlib.Axes object on which to draw the ROC curve.
+    :param y_true: A np array of the binary true labels
+    :param y_pred: A np array of the corresponding predicted labels
+    :param pos_label: Optional
+    :param label: An optional string which will be displayed as a description of the ROC curve in the
+        legend of the plot.
+    :param show_label_auc: Whether to actually add labels to the plot
+    :param color: A matplotlib color value for the main ROC curve
+    :param show_reference: Boolean flag whether to display the reference curve. The reference curve will
+        simply be a straight line between bottom left and top right corner showing the chance level of a
+        completely random predictor (AUC 0.5)
+    :param reference_color: A mpl color value for the reference curve
+
+    :returns: A tuple of two elements: (1) The numpy array of the false positive rate and (2) the numpy
+        array of the true positive rate
+    """
+    fpr, tpr, _ = roc_curve(
+        y_true=y_true,
+        y_score=y_pred,
+        pos_label=pos_label,
+    )
+    auc = roc_auc_score(y_true, y_pred)
+
+    if label is None:
+        label = ''
+
+    if show_label_auc:
+        label = f'{label} (AUC = {auc:.2f})'
+
+    ax.plot(
+        fpr, tpr,
+        color=color,
+        label=label,
+        ls='-',
+    )
+
+    ax.set_xlim(-0.05, 1.05)
+    ax.set_xlabel('False Positive Rate')
+
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_ylabel('True Positive Rate')
+
+    if show_reference:
+        reference_label = 'chance level'
+        if show_label_auc:
+            reference_label = f'{reference_label} (AUC = 0.5)'
+
+        ax.plot(
+            [0, 1], [0, 1],
+            color=reference_color,
+            ls='-',
+            label=reference_label,
+            zorder=-1,
+        )
+
+    return fpr, tpr
+
+
+def load_model(model_path: str = MODEL_PATH) -> ks.models.Model:
+    """
+    Loads the keras model from memory given its ``model_path`` absolute folder path. By default, this
+    function will load the default model which is shipped with this package.
+
+    :param model_path: The absolute path to the folder which contains the models persistent representation.
+
+    :returns: The MEGAN model which is saved at the given folder path
+    """
+    with ks.utils.custom_object_scope(CUSTOM_OBJECTS):
+        model = ks.models.load_model(model_path)
+
+    return model

@@ -10,6 +10,11 @@ CHANGELOG
 0.2.0 - 27.02.2023 - Added the calculation of fidelity and also split the explanation visualizations into
 two PDF files: One which contains onl the correct predictions and one which contains the very bad
 predictions. Also fixed the model saving and loading process.
+
+0.3.0 - 13.04.2023 - (1) Added a ROC Curve plot as additional evaluation method (2) In the analysis now
+actually implemented a check which makes sure that the model can be properly loaded from the persistent
+representation.
+
 """
 import os
 import random
@@ -26,6 +31,7 @@ from scipy.spatial.distance import cityblock
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import RocCurveDisplay
 from pycomex.experiment import Experiment
 from pycomex.util import Skippable
 from visual_graph_datasets.data import load_visual_graph_dataset
@@ -39,8 +45,10 @@ from graph_attention_student.training import NoLoss
 from graph_attention_student.util import array_normalize
 from kgcnn.data.utils import ragged_tensor_from_nested_numpy
 
+from megan_aggregators.util import plot_roc_curve
+
 mpl.use('TkAgg')
-random.seed(3)
+random.seed(314)
 PATH = pathlib.Path(__file__).parent.absolute()
 
 SHORT_DESCRIPTION = (
@@ -50,8 +58,10 @@ SHORT_DESCRIPTION = (
 # == DATASET PARAMETERS ==
 # :param VISUAL_GRAPH_DATASET_PATH:
 #       This has to be the path of the folder which contains the visual graph dataset "aggregators_binary"
-VISUAL_GRAPH_DATASET_PATH: str = '/media/ssd/Programming/visual_graph_datasets/visual_graph_datasets/experiments/results/generate_molecule_dataset_from_csv_aggregators_binary/initial/aggregators_binary'
-
+VISUAL_GRAPH_DATASET_PATH: str = '/media/ssd/.visual_graph_datasets/datasets/aggregators_binary'
+# :param CLASS_NAMES:
+#       This defines the human-readable names of the two classes of the dataset, which will be used in
+#       all the created artifacts
 CLASS_NAMES: dict[int, str] = {
     0: 'aggregator',
     1: 'non-aggregator'
@@ -64,25 +74,26 @@ NUM_TEST: int = 3000
 #       The number of examples *from the test set*, whose explanations should be visualized in the final PDF
 #       If this number is smaller than the test size, elements will be selected randomly.
 NUM_EXAMPLES: int = 500
+SUBSET: t.Optional[int] = None
 
 # == MODEL PARAMETERS ==
 # :param UNITS:
 #       The number of hidden units in each of the convolutional layers of the network. The number of
 #       elements in this list determines the convolutional depth of the network
-UNITS = [32, 32, 32]
+UNITS = [128, 128, 128]
 # :param DROPOUT_RATE:
 #       Dropout rate for the node embeddings between each convolutional layer.
-DROPOUT_RATE = 0.1
+DROPOUT_RATE = 0.25
 # :param IMPORTANCE_FACTOR:
 #       This is the weighting coefficient of the explanation co-training loss. If this value is at 1.0
 #       then the main prediction loss and the explanation loss have the same weight.
 IMPORTANCE_FACTOR = 1.0
 # :param IMPORTANCE_MULTIPLIER:
-#       This is a hyper parameter of the additional explanation training procedure performed for MEGAN
+#       This is a hyperparameter of the additional explanation training procedure performed for MEGAN
 #       models when (IMPORTANCE_FACTOR != 0). This parameter determines what the expected size of the
 #       explanations is. If this parameter is reduced, the explanations will generally consist of less
 #       elements (nodes, edges). Vice versa, a larger value will make explanations consist of more elements.
-IMPORTANCE_MULTIPLIER = 1.8
+IMPORTANCE_MULTIPLIER = 1.0
 # :param IMPORTANCE_UNITS:
 #       The number of hidden units in the explanation-only part of the network. Generally advised to keep
 #       this part shallow.
@@ -99,7 +110,8 @@ CONCAT_HEADS = False
 #       The hidden units of the MLP tail end of the prediction network. Note that the last value of this
 #       list MUST be the same as the size of the target value vector for the dataset (aka number of
 #       classes)
-FINAL_UNITS = [32, 16, 2]
+FINAL_UNITS = [128, 64, 16, 2]
+FINAL_DROPOUT_RATE = 0.05
 
 # == TRAINING PARAMETERS ==
 # :param DEVICE:
@@ -108,11 +120,11 @@ FINAL_UNITS = [32, 16, 2]
 DEVICE = 'cpu:0'
 # :param EPOCHS:
 #       The number of epochs to train the network for
-EPOCHS = 25
+EPOCHS = 5
 # :param BATCH_SIZE:
 #       The number of elements to be used in one batch during the training process. smaller batch sizes
 #       have turned out to work better.
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 # :param OPTIMIZER_CB:
 #       A callback function with no arguments, which should return a valid keras Optimizer object, which
 #       will be used to train the network.
@@ -131,23 +143,28 @@ CLASS_COLORS = {
 BASE_PATH = PATH
 NAMESPACE = 'results/train_megan'
 DEBUG = True
+TESTING = False
 with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
+
+    if TESTING:
+        SUBSET = 40_000
+        EPOCHS = 5
+        NUM_TEST = 100
+
     # "e.info" should be used instead of "print". It will use python's "logging" module to not only
     # print the content ot the console but also write it into a log file at the same time.
     e.info('starting experiment...')
 
-    e.info('starting analysis...')
-    e.status()
-
     # ~ loading the dataset
     # "index_data_map" is a dictionary, whose keys are the integer indices of each of the dataset elements
     # and the values are again dictionaries which contain all the important information for one element.
+    e.info('loading dataset...')
     metadata_map, index_data_map = load_visual_graph_dataset(
         path=VISUAL_GRAPH_DATASET_PATH,
         logger=e.logger,
         log_step=LOG_STEP_EVAL,
         metadata_contains_index=True,
-        #subset=40000,
+        subset=SUBSET,
     )
     dataset_size = len(index_data_map)
     index_max = max(index_data_map.keys())
@@ -277,6 +294,7 @@ with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
             sparsity_factor=SPARSITY_FACTOR,
             concat_heads=CONCAT_HEADS,
             final_units=FINAL_UNITS,
+            final_dropout_rate=FINAL_DROPOUT_RATE,
             final_activation='softmax',
             use_graph_attributes=False,
         )
@@ -324,7 +342,7 @@ with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
         e['auc'] = auc
         e.info(f'final test performance '
                f' - acc: {acc:.2f} '
-               f'- auc: {auc:.2f}')
+               f' - auc: {auc:.2f}')
 
         e.info('saving test set results...')
         for c, index in enumerate(test_indices):
@@ -362,8 +380,14 @@ with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
 
         # From the individual local perturbations of the predicted output we can now calculate the overall
         # fidelity by summing over all the individual ones
-        fidelity = np.mean([e[f'fid/{index}'] for index in test_indices])
+        fidelities = [e[f'fid/{index}'] for index in test_indices]
+        fidelity = np.mean(fidelities)
         e['fidelity'] = fidelity
+        e.info(f'fidelity:\n'
+               f' * avg: {np.mean(fidelities)}\n'
+               f' * std: {np.std(fidelities)}\n'
+               f' * max: {np.max(fidelities)}\n'
+               f' * min: {np.min(fidelities)}\n')
         e.info(f'average explanation fidelity: {fidelity:.2f}')
 
         # ~ Visualizing results
@@ -412,60 +436,82 @@ with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
         plt.close(fig)
 
         # 2. A confusion matrix
-        labels_pred = [np.argmax(v) for v in out_pred]
-        labels_true = [np.argmax(v) for v in out_true]
+        labels_pred = np.array([np.argmax(v) for v in out_pred])
+        labels_true = np.array([np.argmax(v) for v in out_true])
         cm = confusion_matrix(labels_true, labels_pred)
         disp = ConfusionMatrixDisplay(cm, display_labels=list(CLASS_NAMES.values()))
         disp.plot()
         e.commit_fig('confusion_matrix.pdf', disp.figure_)
         plt.close(disp.figure_)
 
-        # 3. The main explanations
+        # 3. AUC ROC analysis
+        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(8, 8))
+        ax.set_title('ROC Curve')
+        plot_roc_curve(
+            ax=ax,
+            y_true=out_true[:, 1],
+            y_pred=out_pred[:, 1],
+            label='agg vs. non-agg',
+            color='orange',
+            show_reference=True,
+            show_label_auc=True,
+        )
+        ax.legend()
+        e.commit_fig('roc_curve.pdf', fig)
+        plt.close(fig)
+
+        # 4. The main explanations
         # However, for these we want to filter for the elements, where the model actually makes a correct
         # prediction
-        # This complicated expression filters all the test indices for only the correct predictions and
-        # also sorts the elements by explanation fidelity
-        correct_indices, _ = zip(*sorted(
-            [(index, e[f'fid/{index}'])
-             for index in example_indices
-             if np.argmax(e[f'out/true/{index}']) == np.argmax(e[f'out/pred/{index}'])],
-            key=lambda tupl: tupl[1],
-            reverse=True,
-        ))
-        e.info(f'visualizing {len(correct_indices)} correct elements...')
-        ni_correct = [e[f'ni/{index}'] for index in correct_indices]
-        ei_correct = [e[f'ei/{index}'] for index in correct_indices]
-        # Then we need to assemble various data structures for these elements here, which are needed for the
-        # function which then creates the PDF with the explanation visualizations.
-        graph_list = [index_data_map[i]['metadata']['graph'] for i in correct_indices]
-        image_path_list = [index_data_map[i]['image_path'] for i in correct_indices]
-        node_positions_list = [g['node_positions'] for g in graph_list]
-        pdf_path = os.path.join(e.path, 'explanations_correct_predictions.pdf')
-        labels_list = [(f'{index_data_map[i]["metadata"]["smiles"]}\n'
-                        f'pred: {np.round(e[f"out/pred/{i}"], 2)} - '
-                        f'true: {e[f"out/true/{i}"]}\n'
-                        f'fidelity ch0: {e[f"out/mod/0/{i}"]:.2f}\n'
-                        f'fidelity ch1: {e[f"out/mod/1/{i}"]:.2f}\n'
-                        f'overall fidelity: {e[f"fid/{i}"]:.2f}')
-                       for i in correct_indices]
-        create_importances_pdf(
-            graph_list=graph_list,
-            image_path_list=image_path_list,
-            node_positions_list=node_positions_list,
-            labels_list=labels_list,
-            importances_map={
-                'megan': (ni_correct, ei_correct)
-            },
-            output_path=pdf_path,
-            importance_channel_labels=list(CLASS_NAMES.values()),
-            plot_node_importances_cb=plot_node_importances_border,
-            plot_edge_importances_cb=plot_edge_importances_border,
-            normalize_importances=True,
-            logger=e.logger,
-            log_step=100,
-        )
+        # Additionally we want to generate separate visualizations for the two classes
+        for c in [0, 1]:
+            class_name = CLASS_NAMES[c]
 
-        # 4. Explanations of bad elements
+            # This complicated expression filters all the test indices for only the correct predictions and
+            # also sorts the elements by explanation fidelity
+            correct_indices, _ = zip(*sorted(
+                [(index, e[f'fid/{index}'])
+                 for index in example_indices
+                 if np.argmax(e[f'out/true/{index}']) == np.argmax(e[f'out/pred/{index}']) == c],
+                key=lambda tupl: tupl[1],
+                reverse=True,
+            ))
+
+            e.info(f'visualizing {len(correct_indices)} correct elements for class "{class_name}"...')
+            ni_correct = [e[f'ni/{index}'] for index in correct_indices]
+            ei_correct = [e[f'ei/{index}'] for index in correct_indices]
+
+            # Then we need to assemble various data structures for these elements here, which are needed for the
+            # function which then creates the PDF with the explanation visualizations.
+            graph_list = [index_data_map[i]['metadata']['graph'] for i in correct_indices]
+            image_path_list = [index_data_map[i]['image_path'] for i in correct_indices]
+            node_positions_list = [g['node_positions'] for g in graph_list]
+            pdf_path = os.path.join(e.path, f'explanations_correct_predictions_{class_name}.pdf')
+            labels_list = [(f'{index_data_map[i]["metadata"]["smiles"]}\n'
+                            f'pred: {np.round(e[f"out/pred/{i}"], 2)} - '
+                            f'true: {e[f"out/true/{i}"]}\n'
+                            f'ch0 contribution to fidelity: {e[f"out/mod/0/{i}"]:.2f}\n'
+                            f'ch1 contribution to fidelity: {e[f"out/mod/1/{i}"]:.2f}\n'
+                            f'overall fidelity: {e[f"fid/{i}"]:.2f}')
+                           for i in correct_indices]
+            create_importances_pdf(
+                graph_list=graph_list,
+                image_path_list=image_path_list,
+                node_positions_list=node_positions_list,
+                labels_list=labels_list,
+                importances_map={
+                    'megan': (ni_correct, ei_correct)
+                },
+                output_path=pdf_path,
+                importance_channel_labels=list(CLASS_NAMES.values()),
+                plot_node_importances_cb=plot_node_importances_border,
+                plot_edge_importances_cb=plot_edge_importances_border,
+                normalize_importances=True,
+                logger=e.logger,
+                log_step=100,
+            )
+
+        # 5. Explanations of bad elements
         # Another interesting set of explanations are the explanations for those elements of the test set
         # which are especially *false* aka where the model confidently predicts the wrong class
         e.info('visualizing explanations for particularly bad predictions...')
@@ -515,9 +561,45 @@ with Skippable(), (e := Experiment(BASE_PATH, NAMESPACE, globals())):
 # == ANALYSIS ==
 with Skippable(), e.analysis:
 
+    # ~ Loading model from disk
     from graph_attention_student.keras import CUSTOM_OBJECTS
 
-    # Here we make sure that the model can be loaded from it's persistent representation on the disk
     e.info('loading model from persistent representation...')
     with ks.utils.custom_object_scope(CUSTOM_OBJECTS):
         model = ks.models.load_model(e['model_path'])
+
+    metadata_map, index_data_map = load_visual_graph_dataset(
+        path=VISUAL_GRAPH_DATASET_PATH,
+        logger=e.logger,
+        log_step=LOG_STEP_EVAL,
+        metadata_contains_index=True,
+        subset=100,
+    )
+    dataset = [data['metadata']['graph'] for data in index_data_map.values()]
+    indices = list(range(len(dataset)))
+
+    x, _, _, _ = process_graph_dataset(
+        dataset,
+        train_indices=indices,
+        test_indices=indices,
+        use_graph_attributes=False,
+        use_importances=False,
+    )
+    out_pred, ni_pred, ei_pred = [v.numpy() for v in model(x)]
+
+    pdf_path = os.path.join(e.path, 'explanations_loaded_model.pdf')
+    create_importances_pdf(
+        graph_list=dataset,
+        node_positions_list=[g['node_positions'] for g in dataset],
+        image_path_list=[data['metadata_path'].replace('.json', '.png') for data in index_data_map.values()],
+        importances_map={
+            'megan': (ni_pred, ei_pred)
+        },
+        output_path=pdf_path,
+        importance_channel_labels=list(CLASS_NAMES.values()),
+        plot_node_importances_cb=plot_node_importances_border,
+        plot_edge_importances_cb=plot_edge_importances_border,
+        normalize_importances=True,
+        logger=e.logger,
+        log_step=100,
+    )
