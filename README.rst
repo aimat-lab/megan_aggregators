@@ -80,6 +80,21 @@ After the experiment is finished, the results and several visualizations and art
 for the classification results on the test set and example visualizations of the generated explanations on
 a subset of the test set.
 
+Using the shipped model
+-----------------------
+
+Alternatively, a fully trained version of the model is already shipped with the package and can be used by
+simply using the ``load_model`` function.
+
+.. code-block:: python
+
+    import tensorflow.keras as ks
+
+    from megan_aggregators.util import load_model
+
+    # This will load the MEGAN keras model which can be used to make predictions.
+    model: ks.models.Model = load_model()
+
 Credits
 =======
 
