@@ -19,8 +19,16 @@ This repository implements the training of a self-explaining MEGAN_ graph neural
 Aside from that, The MEGAN model additionally creates node and edge attributional
 explanations for each individual prediction.
 
-Installation
-============
+🔔 News
+=======
+
+- **May 2023** Added the aggregation model to the MeganExplains web interface: [MeganExplains Aggregation](https://megan.aimat.science/predict/megan_aggregator)
+  So you can test out the model without having to install it!
+
+📦 Installation
+===============
+
+first clone the repository:
 
 .. code-block:: shell
 
@@ -47,8 +55,40 @@ Afterwards, you can check the install by invoking the CLI:
     python3 -m megan_aggregators.cli --help
 
 
-Usage
-=====
+🚀 Quickstart
+=============
+
+The easiest way to get started is to use the saved model instance that comes shipped with the code. This model 
+can locally be loaded and is ready to make aggregation predictions within a few lines of code:
+
+.. code-block::
+
+    import tensorflow.keras as ks
+    from megan_aggregators.util import load_model
+
+    # This will load the MEGAN keras model which can be used to make predictions.
+    model: ks.models.Model = load_model()
+    
+    smiles = 'CCC(CCN)CCC'
+    # This model can now make predictions about given molecules. However, these molecules first have to be 
+    # converted into the appropriate graph representation such that the model can understand them.
+    # This can be done with a "processing" instance.
+    processing = load_processing()
+    graph = processing.process(smiles)
+
+    # "prediction" is a numpy array with the shape (2, ) where the first of the two elements is the 
+    # classifiation logits for the "non-aggregator" class and the second value is the classification 
+    # logits for the "aggregator" class. 
+    predition = model.predict_graphs([graph])[0]
+
+    # The predicted label can be applying the argmax function.
+    # 0 - non-aggregator
+    # 1 - aggregator
+    result = np.argmax(prediction)
+
+
+🤖 Model Training
+=================
 
 Downloading the Dataset
 -----------------------
@@ -80,23 +120,24 @@ After the experiment is finished, the results and several visualizations and art
 for the classification results on the test set and example visualizations of the generated explanations on
 a subset of the test set.
 
-Using the shipped model
------------------------
 
-Alternatively, a fully trained version of the model is already shipped with the package and can be used by
-simply using the ``load_model`` function.
+📖 Referencing
+==============
 
-.. code-block:: python
+If you use, extend or otherwise mention or work, please cite [the paper](https://arxiv.org/abs/2306.02206) as follows:
 
-    import tensorflow.keras as ks
+.. code-block::bibtex
 
-    from megan_aggregators.util import load_model
+    @article{sturm2023mitgating
+        title={Mitigating Molecular Aggregation in Drug Discovery with Predictive Insights from Explainable AI},
+        author={Sturm, Hunter and Teufel, Jonas and Kaitlin A., Isfeld and Friederich, Pascal and Davis, Rebecca L.},
+        journal={arxiv.org},
+        year={2023}
+    }
 
-    # This will load the MEGAN keras model which can be used to make predictions.
-    model: ks.models.Model = load_model()
 
-Credits
-=======
+🫱🏻‍🫲🏾 Credits
+==========
 
 * PyComex_ is a micro framework which simplifies the setup, processing and management of computational
   experiments. It is also used to auto-generate the command line interface that can be used to interact

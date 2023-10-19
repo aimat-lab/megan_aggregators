@@ -17,8 +17,10 @@ import matplotlib.pyplot as plt
 import tensorflow.keras as ks
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
+from visual_graph_datasets.util import dynamic_import
 
 from graph_attention_student.keras import CUSTOM_OBJECTS
+from graph_attention_student.training import EpochCounterCallback
 
 
 PATH = pathlib.Path(__file__).parent.absolute()
@@ -26,9 +28,12 @@ VERSION_PATH = os.path.join(PATH, 'VERSION')
 EXPERIMENTS_PATH = os.path.join(PATH, 'experiments')
 TEMPLATES_PATH = os.path.join(PATH, 'templates')
 
-# 18.04.2023 - Decided that it would make sense to ship one version of the fully trained model instead of
+# 18.04.23 - Decided that it would make sense to ship one version of the fully trained model instead of
 # always having to train one.
 MODEL_PATH = os.path.join(PATH, 'model')
+# 15.05.23 - If we save the model into the repository then we also need to save the processing file as well
+# for it to make sense. We will also place that into the model folder.
+PROCESSING_PATH = os.path.join(MODEL_PATH, 'process.py')
 
 # Use this jinja2 environment to conveniently load the jinja templates which are defined as files within the
 # "templates" folder of the package!
@@ -217,3 +222,43 @@ def load_model(model_path: str = MODEL_PATH) -> ks.models.Model:
         model = ks.models.load_model(model_path)
 
     return model
+
+
+def load_processing(processing_path: str = PROCESSING_PATH):
+    """
+    Loads the Processing object which can be used to turn the domain specific representations of input
+    elements (SMILES strings) into the Graph dicts which are needed to make predictions with the machine
+    learning model.
+
+    :param processing_path: The path to the "process.py" file which has been used for the visual graph
+        dataset with which the model was trained.
+
+    :returns: Processing instance
+    """
+    module = dynamic_import(processing_path)
+    return module.processing
+
+
+class VariableSchedulerCallback(EpochCounterCallback):
+
+    def __init__(self,
+                 property_name: str,
+                 value_start: float,
+                 value_end: float,
+                 epoch_end: int,
+                 epoch_start: int = 0):
+        super(VariableSchedulerCallback, self).__init__()
+        self.property_name = property_name
+        self.epoch_start = epoch_start
+        self.epoch_end = epoch_end
+        self.value_start = value_start
+        self.value_end = value_end
+
+        self.step = (self.value_end - self.value_start) / (self.epoch_end - self.epoch_start)
+        self.value = self.value_start
+
+    def on_epoch_end(self, *args, **kwargs):
+        variable = getattr(self.model, self.property_name)
+        if self.epoch > self.epoch_start:
+            self.value = self.value_start + (self.epoch / self.epoch_end) * self.step
+            variable.assign(self.value)

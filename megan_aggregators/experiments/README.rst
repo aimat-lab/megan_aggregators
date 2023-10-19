@@ -17,6 +17,10 @@ List of Experiments
 
 The following list gives a brief overview of the experiments and their purpose:
 
-- ``template_experiment.py``: A template which can be copied to create new ``Experiment`` modules
-    - ``template_experiment_sub.py``: A template which implements a generic ``SubExperiment`` and which can
-      be copied to create a new modules.
+- ``generate_counterfactuals.py`` - base experiment for the generation of multi-edit counterfactuals for
+  single molecule.
+- ``predict_dataset.py`` - base experiment for running the model prediction on an entire dataset given
+  by a CSV file containing the SMILES representations of that dataset.
+- ``train_megan.py`` - The base experiment which trains a MEGAN model on the aggregators_binary dataset.
+- ``render_smiles.py`` - Utility experiment which can be used to create rendered images of a list of
+  smiles.
