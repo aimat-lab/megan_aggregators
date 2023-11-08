@@ -9,9 +9,9 @@
 .. |version| image:: https://img.shields.io/badge/version-0.1.0-orange.svg
    :target: https://www.python.org/
 
-=============
+==========================
 MEGAN: Aggregators Dataset
-=============
+==========================
 
 This repository implements the training of a self-explaining MEGAN_ graph neural network model for the
 ``aggregators_binary`` dataset. The primary task is to classify molecular graphs into the two classes
@@ -19,14 +19,17 @@ This repository implements the training of a self-explaining MEGAN_ graph neural
 Aside from that, The MEGAN model additionally creates node and edge attributional
 explanations for each individual prediction.
 
+=======
 🔔 News
 =======
 
-- **May 2023** Added the aggregation model to the MeganExplains web interface: [MeganExplains Aggregation](https://megan.aimat.science/predict/megan_aggregator)
+- **May 2023** Added the aggregation model to the MeganExplains web interface: `MeganExplains Aggregation <https://megan.aimat.science/predict/megan_aggregator>`_.
   So you can test out the model without having to install it!
+- **August 2023** - Check out the arxiv preprint of the `paper`_ here: https://arxiv.org/abs/2306.02206
 
-📦 Installation
-===============
+=========================
+📦 Installation by Source
+=========================
 
 first clone the repository:
 
@@ -54,14 +57,14 @@ Afterwards, you can check the install by invoking the CLI:
     python3 -m megan_aggregators.cli --version
     python3 -m megan_aggregators.cli --help
 
-
+=============
 🚀 Quickstart
 =============
 
 The easiest way to get started is to use the saved model instance that comes shipped with the code. This model 
 can locally be loaded and is ready to make aggregation predictions within a few lines of code:
 
-.. code-block::
+.. code-block:: python
 
     import tensorflow.keras as ks
     from megan_aggregators.util import load_model
@@ -86,12 +89,22 @@ can locally be loaded and is ready to make aggregation predictions within a few 
     # 1 - aggregator
     result = np.argmax(prediction)
 
+================
+💡 Documentation
+================
 
+Currently, the documentation is given the in form of 
+
+==============
+🧪 Experiments
+==============
+
+=================
 🤖 Model Training
 =================
 
 Downloading the Dataset
------------------------
+=======================
 
 The ``aggregators_binary`` dataset can be downloaded from the following URL:
 https://bwsyncandshare.kit.edu/s/pGExzNEkjbadKHw
@@ -104,7 +117,7 @@ Since this dataset is rather large with ~400.000 molecules, the dataset is about
 of a high-speed internet connection and an SSD storage device are highly recommended.
 
 Model Training
---------------
+==============
 
 The model training can be performed by executing the python module
 ``megan_aggregators/experiments/train_megan.py``. **Before executing**, however, the value of the global
@@ -120,13 +133,13 @@ After the experiment is finished, the results and several visualizations and art
 for the classification results on the test set and example visualizations of the generated explanations on
 a subset of the test set.
 
-
+==============
 📖 Referencing
 ==============
 
-If you use, extend or otherwise mention or work, please cite [the paper](https://arxiv.org/abs/2306.02206) as follows:
+If you use, extend or otherwise mention or work, please cite `the paper <https://arxiv.org/abs/2306.02206>`_ as follows:
 
-.. code-block::bibtex
+.. code-block:: bibtex
 
     @article{sturm2023mitgating
         title={Mitigating Molecular Aggregation in Drug Discovery with Predictive Insights from Explainable AI},
@@ -135,7 +148,7 @@ If you use, extend or otherwise mention or work, please cite [the paper](https:/
         year={2023}
     }
 
-
+==========
 🫱🏻‍🫲🏾 Credits
 ==========
 
@@ -154,3 +167,5 @@ If you use, extend or otherwise mention or work, please cite [the paper](https:/
 .. _VisualGraphDataset: https://github.com/awa59kst120df/visual_graph_datasets
 .. _MEGAN: https://github.com/awa59kst120df/graph_attention_student
 .. _KGCNN: https://github.com/aimat-lab/gcnn_keras
+
+.. _`paper`: https://arxiv.org/abs/2306.02206
