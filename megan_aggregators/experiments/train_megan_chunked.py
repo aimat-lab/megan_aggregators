@@ -139,20 +139,13 @@ def experiment(e: Experiment):
     # We save all the raw tensor data in a custom folder in the overall experiment cache folder. However, to make this more 
     # efficient we only actually perform the whole dataset pre-processing if that folder does not exist yet. If it does exist 
     # we are simply going to re-use that.
-    cache_path = os.path.join(CACHE_PATH, f'train_megan_chunked__{e.name}')
-    e.log(f'cache path: {cache_path}')
+    cache_path = os.path.join(CACHE_PATH, f'train_megan_chunked__{e.name}__cache')
+    # If ...
+    test_path = os.path.join(CACHE_PATH, f'train_megan_chunked__{e.name}__test')
+    e.log(f'cache path: {cache_path} - test path: {test_path}')
     if not os.path.exists(cache_path):
         
         os.mkdir(cache_path)
-        # ~ creating the train-test-split
-        
-        e.log('creating the train-test-split')
-        indices = list(range(dataset_length))
-        test_indices = random.sample(indices, e.NUM_TEST)
-        train_indices_set = set(indices).difference(set(test_indices))
-        train_indices = list(train_indices_set)
-        e['test_indices'] = test_indices
-        e['train_indices'] = train_indices
         
         # the test set
         # sampling the test set is actually a bit of a problem here. Certainly the easiest option would be to simple take the 
@@ -208,6 +201,16 @@ def experiment(e: Experiment):
                     graphs = []
                 
         print(Counter(index_class_map.values()))
+        
+    # IF the cache folder does already exist we actually have to do the thing where the
+    else:
+        pass
+        
+    indices = list(range(dataset_length))
+    test_indices = list(test_data_map.keys())
+    train_indices = list(set(indices).difference(set(test_indices)))
+    e['test_indices'] = test_indices
+    e['train_indices'] = train_indices
     
     # ~ creating the model
     # At first we need to set up the model so that we can then use it for the training.
@@ -295,6 +298,9 @@ def experiment(e: Experiment):
     for index, graph, (out, ni, ei) in zip(indices_test, graphs_test, predictions):
         e[f'out/pred/{index}'] = out
         e[f'out/true/{index}'] = graph['graph_labels']
+        
+        e[f'ni/{index}'] = ni
+        e[f'ei/{index}'] = ei
         
         
 @experiment.analysis
