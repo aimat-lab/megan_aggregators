@@ -10,12 +10,15 @@ import os
 import random
 import pathlib
 import logging
+import pickle
 import typing as t
+from collections import Counter
 
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as ks
 import matplotlib.pyplot as plt
+from kgcnn.data.utils import ragged_tensor_from_nested_numpy
 from pycomex.functional.experiment import Experiment
 from pycomex.utils import file_namespace, folder_path
 from graph_attention_student.models.megan import Megan
@@ -25,81 +28,23 @@ from visual_graph_datasets.data import VisualGraphDatasetReader
 
 from megan_aggregators.utils import NULL_LOGGER
 
+PATH = pathlib.Path(__file__).parent.absolute()
+CACHE_PATH = os.path.join(PATH, 'cache')
+NUM_TEST = 1000
+
+CHUNK_SIZE: int = 1000
+
 # :param VISUAL GRAH_DATASET:
 #       pass
-VISUAL_GRAPH_DATASET: str = '~/.visual_graph_datasets/datasets/rb_dual_motifs'
+VISUAL_GRAPH_DATASET: str = '/home/jonas/.visual_graph_datasets/datasets/rb_adv_motifs'
+
+IMPORTANCE_FACTOR: float = 0.0
+IMPORTANCE_CHANNELS: int = 2
+UNITS: t.List[int] = [32, 32, 32]
+FINAL_UNITS: t.List[int] = [32, 16, 2]
 
 
-class VgdGenerator():
-    
-    def __init__(self,
-                 path: str,
-                 indices: t.List[int],
-                 epochs: int,
-                 chunk_size: int = 100,
-                 batch_size: int = 32,
-                 logger: logging.Logger = NULL_LOGGER,
-                 ):
-        self.path = path
-        self.indices = indices
-        self.epochs = epochs
-        self.chunk_size = chunk_size
-        self.batch_size = batch_size
-        self.logger = logger
-    
-        # ~ derived properties
-        # These properties are derived from the dataset
-        self.reader = VisualGraphDatasetReader(logger=self.logger)
-        self.length = len(self.indices)
-    
-        # ~ dynamic properties
-        
-        self.epoch = 0
-        self.chunk_index = 0
-        self.batch_index = 0
-        self.index = 0
-        # This data structure will save the index data map for the current chunk.
-        self.index_data_map = {}
-    
-    def __next__(self):
-        if self.epoch > self.epochs:
-            raise StopIteration()
-        
-        # Now the first thing is: If there is no chunk currently loaded then we need to load the next chunk
-        if self.batch_index >= self.chunk_size - 1:
-            
-            # A special case is if we are currently at the last chunk, then we need to load the first chunk again
-            if self.chunk_index >= self.length - 1:
-                self.logger.info('starting over at first chunk')
-                self.chunk_index = 0
-                random.shuffle(self.indices)
-            
-            self.logger.info('loading new chunk...')
-            num_chunk = min(self.chunk_size, self.length - self.chunk_index)
-            indices = self.indices[self.chunk_index:self.chunk_index+num_chunk]
-            self.elements: t.List[dict] = self.reader.read_indices(indices)
-            self.graphs: t.List[dict] = [data for data in self.index_data_map.values()]
-            self.x = tensors_from_graphs(self.graphs)
-            self.y = np.array([data['targets'] for data in self.index_data_map.values()])
-            self.chunk_index += num_chunk
-            self.batch_index = 0  # in a new chunk we need to reset the batch counting
-            
-        # Then inside a chunk we move on to the next batch, select all the graphs for that batch and then return 
-        # the corresponding tensor representation
-        num_chunk = min(self.chunk_size, self.length - self.chunk_index)
-        num_batch = min(self.batch_size, num_chunk - self.batch_index)
-        x_batch = [tens[self.batch_index:self.batch_index+num_batch] for tens in self.x]
-        y_batch = self.y[self.batch_index:self.batch_index+num_batch]
-        self.batch_index += num_batch
-        
-        # ! Have to change
-        return x_batch, y_batch
-    
-    def __len__(self):
-        return self.length
-    
-    def __iter__(self):
-        return self
+__DEBUG__ = True
 
 
 @Experiment(
@@ -110,24 +55,125 @@ class VgdGenerator():
 def experiment(e: Experiment):
     e.log('starting experiment...')
     
-    # ~ checking the dataset
-    # In this first step we cant load the entire dataset into memory because it is too large, but we can at least check if 
-    # the dataset even exists and is valid
+    # ~ pre-processing the dataset
+    # ---
+    
     assert os.path.exists(e.VISUAL_GRAPH_DATASET), 'Given dataset path does not exist on the local system!'
+    
+    e.log('setting up the dataser reader...')
+    reader = VisualGraphDatasetReader(
+        path=e.VISUAL_GRAPH_DATASET,
+        logger=e.logger,    
+    )
+    dataset_length = len(reader)
+    e.log(f'processing a dataset with {dataset_length} elements')
+    
+    @e.hook('save_cache_graphs')
+    def save_cache_graphs(e: Experiment,
+                          graphs: t.List[dict],
+                          path: str,
+                          ):
+
+        # Then we serialize and save the input. The network input consists of three different tensors which provide the 
+        # information about the graph nodes, edges and edge index lists.
+        # We need to save these three tensors into distinct files.
+        x = tensors_from_graphs(graphs)
+        with open(os.path.join(path, 'x.pkl'), mode='wb') as file:
+            pickle.dump(x, file)
+    
+        # The corresponding target labels for those graphs we actually have to save as a numpy array and not a tensor!
+        targets = np.array([graph['graph_labels'] for graph in graphs], dtype=np.float32)
+        ni = ragged_tensor_from_nested_numpy([np.zeros((graph['node_attributes'].shape[1], e.IMPORTANCE_CHANNELS)) for graph in graphs])
+        ei = ragged_tensor_from_nested_numpy([np.zeros((graph['edge_attributes'].shape[1], e.IMPORTANCE_CHANNELS)) for graph in graphs])
+        y = (targets, ni, ei)
+        with open(os.path.join(path, 'y.pkl'), mode='wb') as file:
+            pickle.dump(y, file)
+        
+    @e.hook('load_cache_graphs')
+    def load_cache_graphs(e: Experiment,
+                          path: str,
+                          ):
+        
+        with open(os.path.join(path, 'x.pkl'), mode='rb') as file:
+            x = pickle.load(file)
+    
+        with open(os.path.join(path, 'y.pkl'), mode='rb') as file:
+            y = pickle.load(file)
+    
+        return x, y
+    
+    # We save all the raw tensor data in a custom folder in the overall experiment cache folder. However, to make this more 
+    # efficient we only actually perform the whole dataset pre-processing if that folder does not exist yet. If it does exist 
+    # we are simply going to re-use that.
+    cache_path = os.path.join(CACHE_PATH, f'train_megan_chunked__{e.name}')
+    e.log(f'cache path: {cache_path}')
+    if not os.path.exists(cache_path):
+        
+        os.mkdir(cache_path)
+        # ~ creating the train-test-split
+        
+        e.log('creating the train-test-split')
+        indices = list(range(dataset_length))
+        test_indices = random.sample(indices, e.NUM_TEST)
+        train_indices_set = set(indices).difference(set(test_indices))
+        train_indices = list(train_indices_set)
+        e['test_indices'] = test_indices
+        e['train_indices'] = train_indices
+
+        index_class_map = {}
+        index_data_map = {}
+        chunk_index = 0
+        for i, data_map in enumerate(reader.chunk_iterator()):
+            e.log(f'processing dataset chunk {i} with {len(data_map)} elements')
+            index_data_map.update(data_map)
+            index_class_map.update({index: np.argmax(data['metadata']['graph']['graph_labels']) for index, data in data_map.items()})
+            
+            # If the collected data is now bigger than the selected chunk size then we actually process all of that data into 
+            # tensors and then save all of those tensors as one big chunk to the cache folder.
+            if len(index_data_map) >= e.CHUNK_SIZE:
+                
+                while len(index_data_map) >= e.CHUNK_SIZE:
+                    
+                    graphs = []
+                    for index, data in list(index_data_map.items())[:e.CHUNK_SIZE]:
+                        graph = data['metadata']['graph']
+                        graphs.append(graph)
+                        
+                        del index_data_map[index]
+                                        
+                    e.log(f'saving tensor cache {chunk_index}...')
+                    path = os.path.join(cache_path, f'{chunk_index:02d}')
+                    os.mkdir(path)
+                    
+                    e.apply_hook(
+                        'save_cache_graphs',
+                        graphs=graphs,
+                        path=path,
+                    )
+                    chunk_index += 1
+                
+        print(Counter(index_class_map.values()))
     
     # ~ creating the model
     # At first we need to set up the model so that we can then use it for the training.
 
     @e.hook('create_model')
-    def create_model():
+    def create_model(e: Experiment):
         
         e.log('creating MEGAN model...')
         model = Megan(
-            
+            units=e.UNITS,
+            importance_factor=e.IMPORTANCE_FACTOR,
+            importance_channels=e.IMPORTANCE_CHANNELS,
+            final_units=e.FINAL_UNITS,
+            final_activation='linear',
+            concat_heads=False,
+            use_bias=True,
+            use_edge_features=True,
         )
         model.compile(
             optimizer=ks.optimizers.Adam(learning_rate=1e-3),
-            metrics=[ks.metrics.CategoricalAccuracy()],
+            # metrics=[ks.metrics.CategoricalAccuracy()],
             loss=[
                 ks.losses.CategoricalCrossentropy(from_logits=True),
                 NoLoss(),
@@ -143,17 +189,50 @@ def experiment(e: Experiment):
     model = e.apply_hook(
         'create_model',
     )
-    
-    
+
     # ~ training the model
     
+    def training_generator(epochs: int,
+                           batch_size: int,
+                           ):
+        
+        chunk_paths = [path for name in os.listdir(cache_path) if (path := os.path.join(cache_path, name)) and os.path.isdir(path)]
+        
+        epoch_index = 0
+        while epoch_index < epochs:
+            
+            e.log(f'starting epoch {epoch_index}...')
+            for chunk_index, path in enumerate(chunk_paths):
+                
+                e.log(f'loading chunk {chunk_index} for training')
+                x_chunk, y_chunk = e.apply_hook(
+                    'load_cache_graphs',
+                    path=path
+                )
+                chunk_size = len(y_chunk[0])
+
+                batch_index = 0
+                while batch_index < chunk_size:
+                    num_batch = min(batch_size, chunk_size - batch_index)
+                    x_batch = [v[batch_index:batch_index+num_batch] for v in x_chunk]
+                    y_batch = [v[batch_index:batch_index+num_batch] for v in y_chunk]
+                                        
+                    batch_index += num_batch
+                    # print(batch_index, x_batch, y_batch)
+                    yield x_batch, y_batch
+                    
+            epoch_index += 1
+                    
+    
     e.log('setting up the dataset generator...')
-    VgdGenerator(
-        path=e.VISUAL_GRAPH_DATASET,
-        logger=e.logger,
+    generator = training_generator(3, 32)
+    model.fit(
+        generator,
     )
     
     
+    
+experiment.run_if_main()
     
     
     
