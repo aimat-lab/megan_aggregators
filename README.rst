@@ -89,15 +89,19 @@ can locally be loaded and is ready to make aggregation predictions within a few 
     # 1 - aggregator
     result = np.argmax(prediction)
 
-================
-💡 Documentation
-================
-
-Currently, the documentation is given the in form of 
 
 ==============
 🧪 Experiments
 ==============
+
+All the computational experiments performed in the context of this project are implemented in the PyComex_ micro framework for 
+computation experimentation. In this framework, each experiment is implemented as an individual python module ``.py`` file. 
+
+All the experiment modules can be found in the ``megan_aggregators/experiments`` folder. The most important subset of experiments 
+will be described below:
+
+- ``train_megan.py`` - This experiment will train a MEGAN model, if provided a valid path to a binary classification visual 
+  graph dataset.
 
 =================
 🤖 Model Training
