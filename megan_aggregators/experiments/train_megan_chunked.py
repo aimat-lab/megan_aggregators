@@ -19,6 +19,7 @@ batches in one chunk were completely processed, the next chunk is loaded until a
 processed once. 
 """
 import os
+import csv
 import random
 import pathlib
 import logging
@@ -52,34 +53,17 @@ from visual_graph_datasets.visualization.importances import create_importances_p
 from megan_aggregators.utils import NULL_LOGGER
 
 PATH = pathlib.Path(__file__).parent.absolute()
-CACHE_PATH = os.path.join(PATH, 'cache')
 
 # == DATASET PARAMETERS ==
 # These are the parameters related to the dataset and the processing thereof.
 
-# :param VISUAL GRAH_DATASET:
-#       This has to be the absolute string path pointing towards the visual graph dataset to be used for the training 
-#       of the model.
-VISUAL_GRAPH_DATASET: str = '/media/ssd/.visual_graph_datasets/datasets/rb_adv_motifs'
-# :param NUM_TEST:
-#       This is the number of elements to sample for the test set on which the performance of the model will be 
-#       evaluated
-NUM_TEST: int = 1000
-# :param CHUNK_SIZE:
-#       This is the size of the chunks into which the dataset will be split during the pre-processing. So this is 
-#       the number of elements that will be loaded into the actual memory at the same time. Therefore this number 
-#       has to be chosen appropriately for the available hardware.
-CHUNK_SIZE: int = 1000
-# :param OVERSAMPLING_FACTORS:
-#       This is a dictionary where the keys are the integer identifiers for the possible classes of the dataset
-#       and the associated values are the corresponding oversampling factors to be applied to the elements of that 
-#       class. An oversampling factor of 5 for example means that every element of that class will be duplicated 5 
-#       times as part of the dataset. In this specific case, the oversampling is generally necessary because the 
-#       underlying dataset is highly imbalanced (meaning that one class appears significantly more often than the other)
-OVERSAMPLING_FACTORS: dict = {
-    0: 30,   # non-aggregator
-    1: 1,  # aggregator
-}
+# :param CACHED_PATH:
+#       This should define the path to the folder which contains the disk cached version of the dataset. This disk 
+#       cache folder has to contain itself 2 sub folders "test" and "train".
+#       The test folder should be a visual graph dataset represenation of the test split of the dataset. The train 
+#       folder should contain multiple pickled files, that each contain the serialized representations of the Tensor 
+#       instances that are required to directly train the model.
+CACHED_PATH = os.path.join(PATH, 'cache', 'aggregators_binary')
 
 # == TRAINING PARAMETERS ==
 # These are the parameters that are relevant to the training process itself, so for example the number of epochs or 
@@ -156,154 +140,24 @@ __DEBUG__ = True
 def experiment(e: Experiment):
     e.log('starting experiment...')
     
-    # ~ pre-processing the dataset
-    # ---
+    # ~ checking the cache path
+    # First of all we need to make sure that the cache path exists, if that does not exist in 
+    # there is no point in trying to execute this experiment
+    if not os.path.exists(e.CACHED_PATH):
+        e.log(f'The cached dataset folder not found @ {e.CACHED_PATH}')
+        return
     
-    assert os.path.exists(e.VISUAL_GRAPH_DATASET), 'Given dataset path does not exist on the local system!'
-    
-    e.log('setting up the dataser reader...')
-    reader = VisualGraphDatasetReader(
-        path=e.VISUAL_GRAPH_DATASET,
-        logger=e.logger,    
-    )
-    dataset_length = len(reader)
-    e.log(f'processing a dataset with {dataset_length} elements')
-    
-    @e.hook('save_cache_graphs')
-    def save_cache_graphs(e: Experiment,
-                          graphs: t.List[dict],
-                          path: str,
-                          ):
-
-        # Then we serialize and save the input. The network input consists of three different tensors which provide the 
-        # information about the graph nodes, edges and edge index lists.
-        # We need to save these three tensors into distinct files.
-        x = tensors_from_graphs(graphs)
-        with open(os.path.join(path, 'x.pkl'), mode='wb') as file:
-            pickle.dump(x, file)
-            del x
-    
-        # The corresponding target labels for those graphs we actually have to save as a numpy array and not a tensor!
-        targets = np.array([graph['graph_labels'] for graph in graphs], dtype=np.float32)
-        ni = ragged_tensor_from_nested_numpy([np.zeros((graph['node_attributes'].shape[1], e.IMPORTANCE_CHANNELS)) for graph in graphs])
-        ei = ragged_tensor_from_nested_numpy([np.zeros((graph['edge_attributes'].shape[1], e.IMPORTANCE_CHANNELS)) for graph in graphs])
-        y = (targets, ni, ei)
-        with open(os.path.join(path, 'y.pkl'), mode='wb') as file:
-            pickle.dump(y, file)
-        
-    @e.hook('load_cache_graphs')
-    def load_cache_graphs(e: Experiment,
-                          path: str,
-                          ):
-        
-        with open(os.path.join(path, 'x.pkl'), mode='rb') as file:
-            x = pickle.load(file)
-    
-        with open(os.path.join(path, 'y.pkl'), mode='rb') as file:
-            y = pickle.load(file)
-    
-        return x, y
-    
-    # We save all the raw tensor data in a custom folder in the overall experiment cache folder. However, to make this more 
-    # efficient we only actually perform the whole dataset pre-processing if that folder does not exist yet. If it does exist 
-    # we are simply going to re-use that.
-    cache_path = os.path.join(CACHE_PATH, f'train_megan_chunked__{e.name}__cache')
-    # If ...
-    test_path = os.path.join(CACHE_PATH, f'train_megan_chunked__{e.name}__test')
+    # ~ loading the test dataset
+    # The test dataset should be given as a visual graph dataset in the cached folder, at this 
+    # point we can simply load it as such using a vgd reader.
+    test_path = os.path.join(e.CACHED_PATH, 'test')
     e['test_path'] = test_path
-    
-    e.log(f'cache path: {cache_path} - test path: {test_path}')
-    if not os.path.exists(cache_path):
-        
-        os.mkdir(cache_path)
-        
-        # the test set
-        # sampling the test set is actually a bit of a problem here. Certainly the easiest option would be to simple take the 
-        # first or last N elements of the dataset in general as the test set. However, in this dataset we can expect that there 
-        # is an ordering bias - which means that it is not inherently shuffled enough to get a representative sample like this.
-        # Now the alternative we are going to do instead: We are going to sample a certain number of elements from each of the 
-        # dataset chunks randomly to make up the test set.
-        test_data_map: t.Dict[int, dict] = {}
-        num_chunks = len(reader.chunk_map)
-        num_test_per_chunk = int(e.NUM_TEST / num_chunks)
-        
-        index_class_map = {}
-        # This will be a temporary dict structure where the keys are the global integer indices of the elements and the the values 
-        # are the actual data elements.
-        train_data_map: t.Dict[int, dict] = {}
-        chunk_index = 0
-        for i, data_map in enumerate(reader.chunk_iterator(randomize=True)):
-            e.log(f'processing dataset chunk {i} with {len(data_map)} elements')
-            if len(data_map) == 0:
-                continue
-            
-            # As the first step we extract a number of the elements for the test set.
-            for index in random.sample(list(data_map.keys()), k=num_test_per_chunk):
-                test_data_map[index] = data_map[index]
-                del data_map[index]
-            
-            # Only afterwards we aggregate the remaining elements to the training dict 
-            train_data_map.update(data_map)
-            index_class_map.update({index: np.argmax(data['metadata']['graph']['graph_labels']) for index, data in data_map.items()})
-            
-            # If the collected data is now bigger than the selected chunk size then we actually process all of that data into 
-            # tensors and then save all of those tensors as one big chunk to the cache folder.
-            if len(train_data_map) >= e.CHUNK_SIZE:
-                
-                while len(train_data_map) >= e.CHUNK_SIZE:
-                    
-                    graphs = []
-                    for index, data in list(train_data_map.items())[:e.CHUNK_SIZE]:
-                        graph = data['metadata']['graph']
-                        target = np.argmax(graph['graph_labels'])
-                        graphs += [graph] * e.OVERSAMPLING_FACTORS[target]
-                        
-                        del train_data_map[index]
-                                        
-                    e.log(f'saving tensor cache {chunk_index} with {len(graphs)} elements...')
-                    path = os.path.join(cache_path, f'{chunk_index:02d}')
-                    os.mkdir(path)
-                    
-                    e.apply_hook(
-                        'save_cache_graphs',
-                        graphs=graphs,
-                        path=path,
-                    )
-                    chunk_index += 1
-                    graphs = []
-                
-        class_counter = Counter(index_class_map.values())
-        e.log(f'overall class distribution in the dataset: {class_counter}')
-        
-        # ~ writing test set
-        e.log('saving the test set...')
-        os.mkdir(test_path)
-        writer = VisualGraphDatasetWriter(test_path, chunk_size=10_000)
-        for index, data in test_data_map.items():
-            data['index'] = index
-            data['metadata']['image_path'] = data['image_path']
-            writer.write(
-                name=index,
-                metadata=data['metadata'],
-                figure=None,
-            )
-            
-    # IF the cache folder does already exist we actually have to do the thing where the
-    else:
-        e.log('loading the test set...')
-        reader = VisualGraphDatasetReader(
-            path=test_path,
-            logger=e.logger,
-            log_step=1000
-        )
-        test_data_map = reader.read()
-        e.log(f'loaded test dataset with {len(test_data_map)} elements')
-        
-    indices = list(range(dataset_length))
-    test_indices = list(test_data_map.keys())
-    train_indices = list(set(indices).difference(set(test_indices)))
-    e['test_indices'] = test_indices
-    e['train_indices'] = train_indices
+    reader = VisualGraphDatasetReader(
+        path=test_path,
+        logger=e.logger,
+        log_step=1000,
+    )
+    test_map = reader.read()
     
     # ~ creating the model
     # At first we need to set up the model so that we can then use it for the training.
@@ -347,51 +201,69 @@ def experiment(e: Experiment):
 
     # ~ training the model
     
+    @e.hook('load_cache')
+    def load_cache(e: Experiment,
+                   path: str):
+        with open(path, mode='rb') as file:
+            content = file.read()
+            x, y = pickle.loads(content)
+            
+        return x, y
+    
+    train_path = os.path.join(e.CACHED_PATH, 'train')
+    
     def training_generator(epochs: int,
                            batch_size: int,
                            ):
         
-        chunk_paths = [path for name in os.listdir(cache_path) if (path := os.path.join(cache_path, name)) and os.path.isdir(path)]
+        chunk_paths = [os.path.join(train_path, name) for name in os.listdir(train_path)]
         
         epoch_index = 0
-        try:
-            while epoch_index < epochs:
+        while epoch_index < epochs:
+            
+            e.log(f'starting epoch {epoch_index}...')
+            for chunk_index, path in enumerate(chunk_paths):
                 
-                e.log(f'starting epoch {epoch_index}...')
-                for chunk_index, path in enumerate(chunk_paths):
-                    
-                    e.log(f'loading chunk {chunk_index} for training')
-                    x_chunk, y_chunk = e.apply_hook(
-                        'load_cache_graphs',
-                        path=path
-                    )
-                    chunk_size = len(y_chunk[0])
-                    indices_chunk = list(range(chunk_size))
-                    random.shuffle(indices_chunk)
+                e.log(f'loading chunk {chunk_index} for training')
+                x_chunk, y_chunk = e.apply_hook(
+                    'load_cache',
+                    path=path
+                )
+                chunk_size = len(y_chunk[0])
+                indices_chunk = list(range(chunk_size))
+                random.shuffle(indices_chunk)
 
-                    batch_index = 0
-                    while batch_index < chunk_size:
-                        num_batch = min(batch_size, chunk_size - batch_index)
-                        indices_batch = indices_chunk[batch_index:batch_index+num_batch]
-                        x_batch = [v[indices_batch] if isinstance(v, np.ndarray) else tf.gather(v, indices_batch) for v in x_chunk]
-                        y_batch = [v[indices_batch] if isinstance(v, np.ndarray) else tf.gather(v, indices_batch) for v in y_chunk]
-                                            
-                        batch_index += num_batch
-                        # print(batch_index, x_batch, y_batch)
-                        yield x_batch, y_batch
-                        
-                epoch_index += 1
-        
-        # We want to be able to externally stop the training without killing the entire program...
-        except KeyboardInterrupt:
-            pass
+                batch_index = 0
+                while batch_index < chunk_size:
+                    num_batch = min(batch_size, chunk_size - batch_index)
+                    indices_batch = indices_chunk[batch_index:batch_index+num_batch]
+                    x_batch = [v[indices_batch] if isinstance(v, np.ndarray) else tf.gather(v, indices_batch) for v in x_chunk]
+                    y_batch = [v[indices_batch] if isinstance(v, np.ndarray) else tf.gather(v, indices_batch) for v in y_chunk]
+                                        
+                    batch_index += num_batch
+                    # print(batch_index, x_batch, y_batch)
+                    yield x_batch, y_batch
                     
+            epoch_index += 1
+                    
+    checkpoint_path = os.path.join(e.path, 'model_checkpoint.h5')
+    checkpoint_callback = ks.callbacks.ModelCheckpoint(
+        filepath=checkpoint_path,
+        save_weights_only=True,
+        save_best_only=True,
+        monitor='output_1_loss',
+        verbose=1,
+    )
     
     e.log('setting up the dataset generator...')
     generator = training_generator(e.EPOCHS, e.BATCH_SIZE)
-    model.fit(
-        generator,
-    )
+    try:
+        model.fit(
+            generator,
+            callbacks=[checkpoint_callback]
+        )
+    except KeyboardInterrupt:
+        e.log('\nstopping the training by KeyboardInterrupt...')
         
     # ~ saving the model
     # Now we also want to save the model so that we can use it later on.
@@ -453,7 +325,7 @@ def analysis(e: Experiment):
     values_true = np.array([v[1] for v in e[f'out/true'].values()])
     values_pred = np.array([v[1] for v in e[f'out/pred'].values()])
     labels_true = np.array([np.argmax(v) for v in e[f'out/true'].values()])
-    labels_pred = np.array([np.argmax(v) for v in e[f'out/true'].values()])
+    labels_pred = np.array([np.argmax(v) for v in e[f'out/pred'].values()])
 
     acc_value = accuracy_score(labels_true, labels_pred)
     e['acc'] = acc_value
@@ -490,11 +362,29 @@ def analysis(e: Experiment):
     fig_path = os.path.join(e.path, 'confusion_matrix.pdf')
     fig.savefig(fig_path)
     
+    # ~ saving the test set as CSV
+    # It might also be interesting to have all the test set predictions easily available
+    # as a CSV 
+    e.log('creating the test CSV...')
+    test_csv_path = os.path.join(e.path, 'test_results.csv')
+    with open(test_csv_path, mode='w') as file:
+        dict_writer = csv.DictWriter(file, fieldnames=['smiles', 'out_true', 'out_pred'])
+        for index, (out, ni, ei) in zip(indices_test, predictions):
+            data = test_data_map[index]
+            dict_writer.writerow({
+                'smiles':       data['metadata']['smiles'],
+                'out_true':     data['metadata']['graph']['graph_labels'],
+                'out_pred':     out.tolist(),
+            })
+    
     # ~ plotting some examples
+    # Here we create a PDF file which contains visualizations of the explanation results: Each 
+    # page of the pdf will represent one input molecule and the various plots on the page visualize 
+    # the attention masks that correspond to the various explanation channels of the model.
     e.log('plotting examples...')
     indices_example = random.sample(indices_test, k=e.NUM_EXAMPLES)
     graphs_example = [test_data_map[i]['metadata']['graph'] for i in indices_example]
-    image_paths_example = [test_data_map[i]['metadata']['image_path'] for i in indices_example]
+    image_paths_example = [test_data_map[i]['image_path'] for i in indices_example]
     pdf_path = os.path.join(e.path, 'examples.pdf')
     create_importances_pdf(
         graph_list=graphs_example,
@@ -512,6 +402,7 @@ def analysis(e: Experiment):
         logger=e.logger,
         log_step=10,
     )
+    
     
     
     
