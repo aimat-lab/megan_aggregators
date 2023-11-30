@@ -27,6 +27,7 @@ PATH = pathlib.Path(__file__).parent.absolute()
 VERSION_PATH = os.path.join(PATH, 'VERSION')
 EXPERIMENTS_PATH = os.path.join(PATH, 'experiments')
 TEMPLATES_PATH = os.path.join(PATH, 'templates')
+ASSETS_PATH = os.path.join(PATH, 'assets')
 
 # 18.04.23 - Decided that it would make sense to ship one version of the fully trained model instead of
 # always having to train one.
