@@ -31,7 +31,7 @@ SMILES_COLUMN: str = 'smiles'
 TARGET_COLUMNS: t.List[str] = ['nonaggregator', 'aggregator']
 # :param NUM_TEST:
 #       This is the number of elements to be used for the test set.
-NUM_TEST: int = 200
+NUM_TEST: int = 2000
 # :param TARGET_OVERSAMPLING_FACTORS:
 #       This dictionary defines the oversampling to be applied to the dataset. The keys are the 
 #       integer indices of the possible target classes and the values are the integer factors of 
@@ -97,6 +97,7 @@ def choose_test_set(e: Experiment,
     while not all([len(keys) >= num_elements for keys in unique_keys.values()]) and index < len(element_dict):
         data = element_dict[index]
         label = np.argmax(data['targets'])
+        
         if data['unique'] not in unique_keys[label] and len(unique_keys[label]) < num_elements:
             unique_keys[label].add(data['unique'])
             test_dict[index] = data
@@ -104,6 +105,25 @@ def choose_test_set(e: Experiment,
             
         index += 1
             
+    # This actually fixes a very important problem and we can phrase it like this: If this loop encounters 
+    # an element in the dataset for which the unique (original molecule) index is already part of the test 
+    # set, then we need to remove that element from the train set.
+    # If we did not do this, then the test set itself would not actually contain unseen molecules compared 
+    # to the train set, but rather it would only contain unseen protonation states, which is too weak of a 
+    # difference for us here.
+    deletion_count = 0
+    indices = list(element_dict.keys())
+    for index in indices:
+        data = element_dict[index]
+        label = np.argmax(data['targets'])
+        
+        if data['unique'] in unique_keys[label]:
+            del element_dict[index]
+            deletion_count += 1
+            
+    e.log(f'deleted {deletion_count} elements from train set due to test set overlap')
+            
+    # Now we just want to print some info about the target distribution in the selected test set.
     counter = Counter([np.argmax(data['targets']) for data in test_dict.values()])
     e.log(f'selected test indices by label: {counter}')
     

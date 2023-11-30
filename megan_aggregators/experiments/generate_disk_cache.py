@@ -30,6 +30,8 @@ from pycomex.utils import file_namespace, folder_path
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
 from visual_graph_datasets.data import VisualGraphDatasetWriter
 from graph_attention_student.data import tensors_from_graphs
+from visual_graph_datasets.experiments.generate_molecule_dataset_from_csv import PROCESSING
+
 
 PATH = pathlib.Path(__file__).parent.absolute()
 ASSETS_PATH = os.path.join(PATH, 'assets')
@@ -160,7 +162,8 @@ def experiment(e: Experiment):
     os.mkdir(test_path)
     
     e.log('setting up the Processing instance...')
-    processing = MoleculeProcessing()
+    # processing = MoleculeProcessing()
+    processing = PROCESSING
 
     writer = VisualGraphDatasetWriter(path=test_path)
     

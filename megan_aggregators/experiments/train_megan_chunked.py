@@ -31,6 +31,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras as ks
 import matplotlib.pyplot as plt
+from scipy.special import softmax
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score, roc_curve
@@ -69,9 +70,12 @@ CACHED_PATH = os.path.join(PATH, 'cache', 'aggregators_binary')
 # These are the parameters that are relevant to the training process itself, so for example the number of epochs or 
 # the batch size.
 
+# :param LEARNING_RATE:
+#       The learning rate for the optimizer
+LEARNING_RATE: float = 1e-3
 # :param BATCH_SIZE:
 #       The number of elements to use in one batch during training
-BATCH_SIZE: int = 32
+BATCH_SIZE: int = 64
 # :param EPOCHS:
 #       This is the number of epochs to train the model for
 EPOCHS: int = 10
@@ -86,6 +90,11 @@ EPOCHS: int = 10
 #       the model with an additional message passing (graph attention) layer and the integer value determines the 
 #       size of the layer's hidden units.
 UNITS: t.List[int] = [16, 16, 16]
+# :param EMBEDDING_UNITS:
+#       This list defines the message passing layers structure of the model. Each new entry in this list configues 
+#       the model with an additional graph embedidng layer and the integer value determines the 
+#       size of the layer's hidden units.
+EMBEDDING_UNITS: t.List[int] = [16, 16]
 # :param FINAL_UNITS:
 #       This list defines the final prediction MLP layer structure of the model. Each new entry in this list configures 
 #       the model with an additonal dense layer and the integer value determines the number of hidden units.
@@ -165,12 +174,13 @@ def experiment(e: Experiment):
     @e.hook('create_model')
     def create_model(e: Experiment):
         
-        e.log('creating MEGAN model...')
+        e.log('creating MEGAN2 model...')
         model = Megan2(
             units=e.UNITS,
             importance_factor=e.IMPORTANCE_FACTOR,
             importance_channels=e.IMPORTANCE_CHANNELS,
             importance_multiplier=e.IMPORTANCE_MULTIPLIER,
+            embedding_units=e.EMBEDDING_UNITS,
             final_units=e.FINAL_UNITS,
             final_activation='linear',
             sparsity_factor=e.SPARSITY_FACTOR,
@@ -181,7 +191,7 @@ def experiment(e: Experiment):
             use_edge_features=True,
         )
         model.compile(
-            optimizer=ks.optimizers.Adam(learning_rate=1e-3),
+            optimizer=ks.optimizers.Adam(learning_rate=e.LEARNING_RATE),
             # metrics=[ks.metrics.CategoricalAccuracy()],
             loss=[
                 ks.losses.CategoricalCrossentropy(from_logits=True),
@@ -236,9 +246,10 @@ def experiment(e: Experiment):
                 batch_index = 0
                 while batch_index < chunk_size:
                     num_batch = min(batch_size, chunk_size - batch_index)
-                    indices_batch = indices_chunk[batch_index:batch_index+num_batch]
-                    x_batch = [v[indices_batch] if isinstance(v, np.ndarray) else tf.gather(v, indices_batch) for v in x_chunk]
-                    y_batch = [v[indices_batch] if isinstance(v, np.ndarray) else tf.gather(v, indices_batch) for v in y_chunk]
+                    
+                    x_batch = [v[batch_index:batch_index+num_batch] for v in x_chunk]
+                    y_batch = [v[batch_index:batch_index+num_batch] for v in y_chunk]
+                    y_batch = [np.array(v) if isinstance(v, list) else v for v in y_batch]
                                         
                     batch_index += num_batch
                     # print(batch_index, x_batch, y_batch)
@@ -260,10 +271,14 @@ def experiment(e: Experiment):
     try:
         model.fit(
             generator,
-            callbacks=[checkpoint_callback]
+            # callbacks=[checkpoint_callback]
         )
     except KeyboardInterrupt:
         e.log('\nstopping the training by KeyboardInterrupt...')
+        
+    num_parameters = model.count_params()
+    e.log(f'finished model training')
+    e.log(f' * model with {num_parameters} parameters')
         
     # ~ saving the model
     # Now we also want to save the model so that we can use it later on.
@@ -299,7 +314,7 @@ def analysis(e: Experiment):
     
     predictions = model.predict_graphs(graphs_test)
     for index, graph, (out, ni, ei) in zip(indices_test, graphs_test, predictions):
-        e[f'out/pred/{index}'] = out
+        e[f'out/pred/{index}'] = softmax(out)
         e[f'out/true/{index}'] = graph['graph_labels']
         
         e[f'ni/{index}'] = ni
@@ -329,16 +344,16 @@ def analysis(e: Experiment):
 
     acc_value = accuracy_score(labels_true, labels_pred)
     e['acc'] = acc_value
-    e.log(f' * acc: {acc_value:.2f}')
+    e.log(f' * acc: {acc_value:.4f}')
     
     f1_value = f1_score(labels_true, labels_pred)
     e['f1'] = f1_value
-    e.log(f' * f1: {f1_value:.2f}')
+    e.log(f' * f1: {f1_value:.4f}')
     
     fpr, tpr, _ = roc_curve(values_true, values_pred)
     auc_value = roc_auc_score(values_true, values_pred)
     e['auc'] = auc_value
-    e.log(f' * auc: {auc_value:.2f}')
+    e.log(f' * auc: {auc_value:.4f}')
     
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 10))
     ax.plot(fpr, tpr, color='darkorange', label=f'AUC: {auc_value:.2f}')
@@ -374,7 +389,7 @@ def analysis(e: Experiment):
             dict_writer.writerow({
                 'smiles':       data['metadata']['smiles'],
                 'out_true':     data['metadata']['graph']['graph_labels'],
-                'out_pred':     out.tolist(),
+                'out_pred':     softmax(out).tolist(),
             })
     
     # ~ plotting some examples
