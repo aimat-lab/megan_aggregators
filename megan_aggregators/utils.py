@@ -21,6 +21,7 @@ from visual_graph_datasets.util import dynamic_import
 
 from graph_attention_student.keras import CUSTOM_OBJECTS
 from graph_attention_student.training import EpochCounterCallback
+from graph_attention_student.models import load_model as load_model_raw
 
 
 PATH = pathlib.Path(__file__).parent.absolute()
@@ -209,20 +210,6 @@ def plot_roc_curve(ax: plt.Axes,
 
     return fpr, tpr
 
-
-def load_model(model_path: str = MODEL_PATH) -> ks.models.Model:
-    """
-    Loads the keras model from memory given its ``model_path`` absolute folder path. By default, this
-    function will load the default model which is shipped with this package.
-
-    :param model_path: The absolute path to the folder which contains the models persistent representation.
-
-    :returns: The MEGAN model which is saved at the given folder path
-    """
-    with ks.utils.custom_object_scope(CUSTOM_OBJECTS):
-        model = ks.models.load_model(model_path)
-
-    return model
 
 
 def load_processing(processing_path: str = PROCESSING_PATH):

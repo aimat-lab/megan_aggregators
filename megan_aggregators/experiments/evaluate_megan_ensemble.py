@@ -16,18 +16,28 @@ import typing as t
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import roc_curve
 from scipy.special import softmax
 from pycomex.functional.experiment import Experiment
 from pycomex.utils import folder_path, file_namespace
 from visual_graph_datasets.config import Config
 from visual_graph_datasets.web import ensure_dataset
 from visual_graph_datasets.data import VisualGraphDatasetReader
+from visual_graph_datasets.visualization.base import draw_image
+from visual_graph_datasets.visualization.importances import create_importances_pdf
+from visual_graph_datasets.visualization.importances import plot_node_importances_background
+from visual_graph_datasets.visualization.importances import plot_edge_importances_background
 from graph_attention_student.models import Megan2
 from graph_attention_student.models import load_model
 
 from megan_aggregators.utils import ASSETS_PATH
 from megan_aggregators.models import ModelEnsemble
+
+mpl.use('Agg')
 
 
 PATH = pathlib.Path(__file__).parent.absolute()
@@ -37,6 +47,10 @@ PATH = pathlib.Path(__file__).parent.absolute()
 
 VISUAL_GRAPH_DATASET: str = os.path.join(PATH, 'cache', 'aggregators_binary_protonated', 'test')
 TEST_INDICES_PATH: t.Optional[str] = None
+TARGET_NAMES: t.Dict[int, str] = {
+    0: 'non-aggregator',
+    1: 'aggregator'
+}
 
 # == MODEL PARAMETERS ==
 
@@ -48,6 +62,11 @@ MODEL_PATHS: t.List[str] = [
     os.path.join(ASSETS_PATH, 'models', 'model_4'),
 ]
 
+# == EVALUATION PARAMETERS ==
+NUM_MISTAKES: int = 50
+NUM_EXAMPLES: int = 100
+
+__DEBUG__ = True
 
 @Experiment(
     base_path=folder_path(__file__),
@@ -103,7 +122,9 @@ def experiment(e: Experiment):
     e.log(f'using {len(graphs)} elements for evaluation')
     
     # ~ loading the ensemble
-    # 
+    # Before we can do any predictions / evaluations we first have to load the model ensemble. For 
+    # that we load all the individual models from their given paths on the disk and then construct 
+    # the ensemble with the list of all the model objects.
     
     e.log('loading the models ans constructing the ensemble...')
     models = []
@@ -111,7 +132,8 @@ def experiment(e: Experiment):
         model = load_model(path)
         models.append(model)
     
-    e.log(f'loaded {len(models)} models')
+    num_models = len(models)
+    e.log(f'loaded {num_models} models')
     
     ensemble = ModelEnsemble(models)
     e.log(f'constructed the ensemble')
@@ -123,25 +145,202 @@ def experiment(e: Experiment):
     # We know aggregate this by doing a consensus decision and we can also calculate the model 
     # uncertainty.
     e.log('aggregating the individual predictions...')
-    predictions: t.List[np.ndarray] = ensemble.predict_graphs()
+    predictions: t.List[np.ndarray] = ensemble.predict_graphs_all(graphs)
     
     consensuses: t.List[int] = []
-    uncertainties = t.List[int] = []
-    for index, graph, pred in zip(index, graphs, predictions):
+    uncertainties: t.List[int] = []
+    for index, graph, pred in zip(indices, graphs, predictions):
         # pred: (B, H)
+        pred = softmax(pred, axis=0)
         consensus = np.mean(pred, axis=-1)
         consensuses.append(consensus)
+        graph['graph_labels_consensus'] = consensus
         
-        uncertainty = np.std(pred, axis=-1) 
+        uncertainty = np.std(pred, axis=-1)
+        # q_top = np.quantile(pred, 0.75, axis=-1)
+        # q_bot = np.quantile(pred, 0.25, axis=-1)
+        # uncertainty = q_top - q_bot 
         uncertainties.append(uncertainty)
+        graph['graph_labels_uncertainty'] = uncertainty
         
         
-    values_true = [arr[1] for arr in consensuses]
-    values_pred = [index_data_map['metadata']['target'][1] for index in indices]
+    values_pred = [arr[1] for arr in consensuses]
+    values_true = [graph['graph_labels'][1] for graph in graphs]
+    
+    labels_pred = [np.argmax(arr) for arr in consensuses]
+    labels_true = [np.argmax(graph['graph_labels']) for graph in graphs]
     
     # ~ calculating evaluation metrics
-    acc_value = accuracy_score(values_true, values_pred)
+    e.log('evaluating results...')
+    
+    acc_value = accuracy_score(labels_true, labels_pred)
     e.log(f'evaluation results:')
     e.log(f' * acc: {acc_value:.3f}')
+            
+    f1_value = f1_score(labels_true, labels_pred)
+    e.log(f' * f1: {f1_value:.3f}')
+            
+    auc_value = roc_auc_score(values_true, values_pred)
+    e.log(f' * auc: {auc_value:.3f}')
+    
+    # ~ plotting the ROC AUC curve
+    fpr, tpr, _ = roc_curve(values_true, values_pred)
+    fig, ax = plt.subplots(
+        ncols=1,
+        nrows=1,
+        figsize=(10, 10)
+    )
+    ax.plot(
+        fpr, tpr,
+        color='darkorange',
+        lw=2,
+        label=f'AUC: {auc_value:.3f}'
+    )
+    ax.plot([0, 1], [0, 1], color='gray', linestyle='--', label='random')
+    ax.set_title('Receiver Operating Characteristic\n'
+                 'Accuracy: 0.861 - F1: 0.859')
+    ax.legend()
+    
+    fig_path = os.path.join(e.path, 'roc.pdf')
+    fig.savefig(fig_path)
+    plt.close(fig)
+    
+    # ~ plotting uncertainty vs error.
+    # Another plot that will be very interesting here is to plot the model's error against the uncertainty. 
+    # Because we are using an ensemble here, there is a relatively easy way to get a measure of the model's classification 
+    # uncertainty by simply using the standard deviation over the individual predictions. 
+    
+    error_values: t.List[float] = [abs(value_true - value_pred) for value_true, value_pred in zip(values_true, values_pred)]
+    uncertainty_values: t.List[float] = [arr[1] for arr in uncertainties]
+    fig_uncertainty, ax_uncertainty = plt.subplots(
+        ncols=1,
+        nrows=1,
+        figsize=(10, 10),
+    )
+    ax_uncertainty.scatter(
+        error_values, 
+        uncertainty_values,
+        color='gray',
+        label='test set',
+    )
+    ax_uncertainty.set_title('Uncertainty vs Error')
+    ax_uncertainty.set_xlabel('Prediction Error')
+    ax_uncertainty.set_ylabel('Ensemble Uncertainty')
+    
+    fig_path = os.path.join(e.path, 'uncertainty.pdf')
+    fig_uncertainty.savefig(fig_path)
+    
+    # ~ extracting the confident mistakes
+    # When looking at the uncertainty vs. error plot there is an interesting pattern there where it almost forms 
+    # a half-dome: For low error predictions there is low uncertainty and then at first as the error increases so 
+    # does the uncertainty. But then the uncertainty decreases again for very high errors. That basically means 
+    # there are samples for which ALL of the models are very confidently wrong...
+    # It makes sense to extract these samples and look at them to see if there is some kind of pattern there.
+    e.log('extracting high confidence mistakes...')
+    index_error_tuples = [(index, error, uncertainty) 
+                          for index, error, uncertainty in zip(indices, error_values, uncertainty_values)]
+    index_error_tuples.sort(key=lambda tpl: tpl[1] - 2 * tpl[2], reverse=True)
+    index_error_tuples = index_error_tuples[:e.NUM_MISTAKES]
+    mistake_indices, mistake_errors, mistake_uncertainties = zip(*index_error_tuples)
+    e.log(f'identified {len(mistake_indices)} high confidence mistakes')
+    
+    pdf_path = os.path.join(e.path, 'confident_mistakes.pdf')
+    with PdfPages(pdf_path) as pdf:
+        for index in mistake_indices:
+            data = index_data_map[index]
+            graph = data['metadata']['graph']
+            value_true = graph['graph_labels'][1]
+            value_pred = graph['graph_labels_consensus'][1]
+            
+            label_true = round(value_true)
+            label_pred = round(value_pred)
+            
+            fig, ax = plt.subplots(
+                ncols=1,
+                nrows=1,
+                figsize=(10, 10)
+            )
+            draw_image(ax, data['image_path'])
+            ax.set_title(f'index: {index}\n'
+                         f'{data["metadata"]["smiles"]}\n'
+                         f'true: {e.TARGET_NAMES[label_true]} ({value_true}) - ' 
+                         f'pred: {e.TARGET_NAMES[label_pred]} ({value_pred:.3f})')
+            
+            pdf.savefig(fig)
+            plt.close(fig)
+            
+    
+    ax_uncertainty.scatter(
+        mistake_errors, mistake_uncertainties,
+        color='red',
+        label='confident mistakes'
+    )
+    ax_uncertainty.legend()
+    
+    fig_path = os.path.join(e.path, 'uncertainty2.pdf')
+    fig_uncertainty.savefig(fig_path)
+    
+    # ~ model similarity
+    # In this section we want to see how similar the predictions of the various models are to each other 
+    # for that purpose we will create a matrix of linear correlation matrices for the individual models.
+    
+    e.log('plotting model pairwise correlation matrix...')
+    # model_values: (B, H)
+    model_values = np.array([np.argmax(arr, axis=0) for arr in predictions])
+    corr = np.corrcoef(model_values.T)
+    
+    fig, ax = plt.subplots(
+        ncols=1,
+        nrows=1,
+        figsize=(10, 10),
+    )
+    cax = ax.matshow(corr, cmap='coolwarm', vmin=0, vmax=1)
+    for (i, j), value in np.ndenumerate(corr):
+        ax.text(
+            j, i,
+            f'{value:.2f}',
+            ha='center',
+            va='center',
+            color='black'
+        )
+        
+    fig.colorbar(cax)
+    
+    ax.set_title('Model Correlation Matrix')
+    
+    fig_path = os.path.join(e.path, 'model_correlation.pdf')
+    fig.savefig(fig_path)
+    
+    # ~ ensemble explanations
+    # It is also possible to create explanations from the ensemble method.
+    
+    e.log('creating ensemble explanations...')
+    explanations: t.List[tuple] = ensemble.explain_graphs_all(graphs)
+    # all_node_importances: (V, K, H)
+    # all_edge_importances: (E, K, H)
+    all_node_importances, all_edge_importances = list(zip(*explanations))
+    node_importances = [np.median(ni, axis=-1) for ni in all_node_importances]
+    edge_importances = [np.median(ei, axis=-1) for ei in all_edge_importances]
+    
+    e.log(f'plotting {e.NUM_EXAMPLES} example explanations...')
+    examples_path = os.path.join(e.path, 'example explananations.pdf')
+    create_importances_pdf(
+        graph_list=graphs[:e.NUM_EXAMPLES],
+        image_path_list=[index_data_map[index]['image_path'] for index in indices[:e.NUM_EXAMPLES]],
+        node_positions_list=[graph['node_positions'] for graph in graphs[:e.NUM_EXAMPLES]],
+        importances_map={
+            'consensus': (
+                node_importances[:e.NUM_EXAMPLES], 
+                edge_importances[:e.NUM_EXAMPLES],
+            ),
+        },
+        plot_node_importances_cb=plot_node_importances_background,
+        plot_edge_importances_cb=plot_edge_importances_background,
+        output_path=examples_path,
+        logger=e.logger,
+        log_step=10,
+    )
+        
+    
             
 experiment.run_if_main()
