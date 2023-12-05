@@ -28,6 +28,7 @@ from visual_graph_datasets.config import Config
 from visual_graph_datasets.web import ensure_dataset
 from visual_graph_datasets.data import VisualGraphDatasetReader
 from visual_graph_datasets.visualization.base import draw_image
+from visual_graph_datasets.processing.base import draw_image
 from visual_graph_datasets.visualization.importances import create_importances_pdf
 from visual_graph_datasets.visualization.importances import plot_node_importances_background
 from visual_graph_datasets.visualization.importances import plot_edge_importances_background
@@ -45,16 +46,33 @@ PATH = pathlib.Path(__file__).parent.absolute()
 # == DATASET PARAMETERS ==
 # These are the parameters related to the model files
 
-# VISUAL_GRAPH_DATASET: str = os.path.join(PATH, 'cache', 'aggregators_binary_protonated', 'test')
-VISUAL_GRAPH_DATASET: str = '/media/ssd/.visual_graph_datasets/datasets/aggregators_lee'
+# :param VISUAL_GRAPH_DATASET:
+#       This string has to define the visual graph dataset on which the ensemble should be evaluated 
+#       on. This string can either be a valid absolute path to a vgd folder on the local system or 
+#       alternatively a valid string identifier for a vgd on the remote file share location, in which 
+#       case the dataset will be downloaded first.
+VISUAL_GRAPH_DATASET: str = os.path.join(PATH, 'cache', 'aggregators_binary_protonated', 'test')
+# :param TEST_INDICES_PATH:
+#       This is optionally the string path to a JSON file containing a list of indices for the dataset. 
+#       if provided, these indices will define on which elements of the dataset, the evaluation will be 
+#       performed. If this is None, then the entire given dataset will be used.
 TEST_INDICES_PATH: t.Optional[str] = None
+# :param TARGET_NAMES:
+#       This is a dictionary which defines human readable names for the target values that can be 
+#       found in the dataset. The keys of this dict structure are integer indices of the targets
+#       and the values are the string names.
 TARGET_NAMES: t.Dict[int, str] = {
     0: 'non-aggregator',
     1: 'aggregator'
 }
 
 # == MODEL PARAMETERS ==
+# These parameters define the models that will be used as part of the ensemble
 
+# :param MODEL_PATHS:
+#       This is a list of valid absolute string paths that point to existing model folders on the local 
+#       system. Each element in this list should represent one model that will ultimately be used as 
+#       part of the ensemble.
 MODEL_PATHS: t.List[str] = [
     os.path.join(ASSETS_PATH, 'models', 'model_0'),
     os.path.join(ASSETS_PATH, 'models', 'model_1'),
@@ -66,7 +84,17 @@ MODEL_PATHS: t.List[str] = [
 ]
 
 # == EVALUATION PARAMETERS ==
+# These parameters define the evaluation behavior of the experiment.
+
+# :param NUM_MISTAKES:
+#       This defines the integer number of elements that will be picked as the most confident mistakes. 
+#       the most confident mistakes are those samples of the dataset where the model makes the largest 
+#       mistake w.r.t. to the ground truth targets, yet at the same time the ensemble has the lowest 
+#       uncertainty.
 NUM_MISTAKES: int = 50
+# :param NUM_EXAMPLES:
+#       This is the number of elements that are used as examples to visualize the ensemble explanations 
+#       that are created by the ensemble.
 NUM_EXAMPLES: int = 100
 
 __DEBUG__ = True

@@ -18,6 +18,11 @@ import tensorflow.keras as ks
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
 from visual_graph_datasets.util import dynamic_import
+from visual_graph_datasets.data import load_visual_graph_element
+from visual_graph_datasets.processing.molecules import MoleculeProcessing
+from visual_graph_datasets.visualization.base import draw_image
+from visual_graph_datasets.visualization.importances import plot_node_importances_background
+from visual_graph_datasets.visualization.importances import plot_edge_importances_background
 
 from graph_attention_student.keras import CUSTOM_OBJECTS
 from graph_attention_student.training import EpochCounterCallback
@@ -225,6 +230,76 @@ def load_processing(processing_path: str = PROCESSING_PATH):
     """
     module = dynamic_import(processing_path)
     return module.processing
+
+
+def visualize_explanations(smiles: str,
+                           processing: MoleculeProcessing,
+                           node_importances: np.ndarray,
+                           edge_importances: np.ndarray,
+                           ) -> plt.Figure:
+    """
+    Creates a visualization of the explanations given as the ``node_importances`` and ``edge_importances`` array 
+    on top of the molecule visualization given by the ``smiles`` string representation. 
+    
+    This method will return a mpl Figure instance which consists of as many separate plots as there are explanation 
+    channels in the given explanation arrays. Each plot will visualize a different explanation on top of the same 
+    molecule.
+    
+    :param smiles: The string SMILES representation
+    :param processing: The Processing instance
+    :param node_importances: A numpy array containing the node attention values of the shape
+        (number of nodes, number of explanations)
+    :param edge_importances: A numpy array containing the edge attention values of the shape
+        (number of edges, number of explanations)
+    
+    :returns: A mpl Figure instance
+    """
+    # We can extract the number of explanation channels easily from the shapes of the importance arrays
+    num_channels = node_importances.shape[1]
+    
+    with tempfile.TemporaryDirectory() as path:
+        
+        name = '0'
+        processing.create(
+            smiles,
+            index=name,
+            output_path=path
+        )
+        
+        # After the element has been created as a set of persistent files on the disk we need to load 
+        # the relevant information from the disk
+        data = load_visual_graph_element(path, name)
+        graph = data['metadata']['graph']
+        
+        fig, rows = plt.subplots(
+            ncols=num_channels,
+            nrows=1,
+            figsize=(num_channels * 10, 10),
+            squeeze=False,
+        )
+        for index in range(num_channels):
+            ax = rows[0][index]
+            ax.set_title(f'channel {index}')
+            
+            # At first we need to put the visualization of the actual molecule onto the plot
+            draw_image(ax, data['image_path'])
+            
+            # Then we can draw the explanations on top of that
+            plot_node_importances_background(
+                ax=ax,
+                g=graph,
+                node_positions=graph['node_positions'],
+                node_importances=node_importances[:, index]
+            )
+            plot_edge_importances_background(
+                ax=ax,
+                g=graph,
+                node_positions=graph['node_positions'],
+                edge_importances=edge_importances[:, index]
+            )
+            
+    return fig
+            
 
 
 class VariableSchedulerCallback(EpochCounterCallback):
