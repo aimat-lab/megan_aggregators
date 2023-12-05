@@ -45,7 +45,8 @@ PATH = pathlib.Path(__file__).parent.absolute()
 # == DATASET PARAMETERS ==
 # These are the parameters related to the model files
 
-VISUAL_GRAPH_DATASET: str = os.path.join(PATH, 'cache', 'aggregators_binary_protonated', 'test')
+# VISUAL_GRAPH_DATASET: str = os.path.join(PATH, 'cache', 'aggregators_binary_protonated', 'test')
+VISUAL_GRAPH_DATASET: str = '/media/ssd/.visual_graph_datasets/datasets/aggregators_lee'
 TEST_INDICES_PATH: t.Optional[str] = None
 TARGET_NAMES: t.Dict[int, str] = {
     0: 'non-aggregator',
@@ -57,9 +58,11 @@ TARGET_NAMES: t.Dict[int, str] = {
 MODEL_PATHS: t.List[str] = [
     os.path.join(ASSETS_PATH, 'models', 'model_0'),
     os.path.join(ASSETS_PATH, 'models', 'model_1'),
-    os.path.join(ASSETS_PATH, 'models', 'model_2'),
+    # os.path.join(ASSETS_PATH, 'models', 'model_2'),
     os.path.join(ASSETS_PATH, 'models', 'model_3'),
     os.path.join(ASSETS_PATH, 'models', 'model_4'),
+    # os.path.join(ASSETS_PATH, 'models', 'model_5'),
+    os.path.join(ASSETS_PATH, 'models', 'model_6'),
 ]
 
 # == EVALUATION PARAMETERS ==
@@ -197,8 +200,8 @@ def experiment(e: Experiment):
         label=f'AUC: {auc_value:.3f}'
     )
     ax.plot([0, 1], [0, 1], color='gray', linestyle='--', label='random')
-    ax.set_title('Receiver Operating Characteristic\n'
-                 'Accuracy: 0.861 - F1: 0.859')
+    ax.set_title(f'Receiver Operating Characteristic\n'
+                 f'Accuracy: {acc_value:.3f} - F1: {f1_value:.3f}')
     ax.legend()
     
     fig_path = os.path.join(e.path, 'roc.pdf')

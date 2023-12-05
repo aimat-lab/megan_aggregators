@@ -45,17 +45,17 @@ EPOCHS: int = 10
 #       This list defines the message passing layers structure of the model. Each new entry in this list configues 
 #       the model with an additional message passing (graph attention) layer and the integer value determines the 
 #       size of the layer's hidden units.
-UNITS: t.List[int] = [32, 32, 32]
+UNITS: t.List[int] = [64, 64, 64]
 # :param EMBEDDING_UNITS:
 #       This list defines the message passing layers structure of the model. Each new entry in this list configues 
 #       the model with an additional graph embedidng layer and the integer value determines the 
 #       size of the layer's hidden units.
-EMBEDDING_UNITS: t.List[int] = [32, 16]
+EMBEDDING_UNITS: t.List[int] = [64, 32]
 # :param FINAL_UNITS:
 #       This list defines the final prediction MLP layer structure of the model. Each new entry in this list configures 
 #       the model with an additonal dense layer and the integer value determines the number of hidden units.
 #       NOTE that the last value in this list should always be ==2 for the binary classification problem.
-FINAL_UNITS: t.List[int] = [32, 16, 2]
+FINAL_UNITS: t.List[int] = [2, ]
 # :param IMPORTANCE_FACTOR:
 #       This determines the weighting factor of the explanation co-training objective of the network.
 IMPORTANCE_FACTOR: float = 2.0
