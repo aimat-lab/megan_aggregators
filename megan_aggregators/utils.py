@@ -15,6 +15,7 @@ import jinja2 as j2
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow.keras as ks
+from scipy.special import softmax
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
 from visual_graph_datasets.util import dynamic_import
@@ -23,6 +24,8 @@ from visual_graph_datasets.processing.molecules import MoleculeProcessing
 from visual_graph_datasets.visualization.base import draw_image
 from visual_graph_datasets.visualization.importances import plot_node_importances_background
 from visual_graph_datasets.visualization.importances import plot_edge_importances_background
+from vgd_counterfactuals.base import CounterfactualGenerator
+from vgd_counterfactuals.generate.molecules import get_neighborhood
 
 from graph_attention_student.keras import CUSTOM_OBJECTS
 from graph_attention_student.training import EpochCounterCallback
@@ -301,6 +304,63 @@ def visualize_explanations(smiles: str,
     return fig
             
 
+def generate_counterfactuals(model: t.Any,
+                             smiles: str,
+                             num: int = 15,
+                             k_neighborhood: int = 1,
+                             processing: MoleculeProcessing = load_processing(),
+                             fix_protonation: bool = False,
+                             min_ph: float = 6.4,
+                             max_ph: float = 6.4,
+                             ) -> List[tuple[str, np.ndarray]]:
+    """
+    Given a loaded ``model`` and a SMILES string ``smiles`` this function will generate a number of
+    counterfactuals for the given input molecule. The number of counterfactuals to be generated is given by 
+    the ``num`` argument. The ``k_neighborhood`` argument will determine the size of the neighborhood which 
+    will be used to generate the counterfactuals. The ``processing`` argument is the instance of the
+    MoleculeProcessing class which is used to convert the SMILES strings into the graph representation which
+    the model can understand. The ``fix_protonation`` flag will determine whether the protonation state of
+    the molecule should be fixed during the counterfactual generation. The ``min_ph`` and ``max_ph`` arguments
+    will determine the pH range which will be used to for the protonation step.
+    
+    This function will return a list of tuples where each tuple consists of the SMILES string of the 
+    generated counterfactual and the corresponding model prediction output array.
+    
+    :returns: List of tuples. Each tuple consists of the SMILES string and the model prediction output array.
+    """
+    
+    def distance_func(org, mod):
+        label = np.argmax(org)
+        return softmax(org)[label] - softmax(mod)[label]
+    
+    generator = CounterfactualGenerator(
+        model=model,
+        processing=processing,
+        distance_func=distance_func,
+        neighborhood_func=lambda *args, **kwargs: get_neighborhood(
+            *args, 
+            **kwargs, 
+            fix_protonation=fix_protonation, 
+            min_ph=min_ph, 
+            max_ph=max_ph,
+        ),
+    )
+    
+    # The counterfactual generator will actually directly create a "mini" visual graph dataset from all of the 
+    # counterfactuals which will have to be saved to a folder on the disk. Therefore we create a temporary
+    # directory for that purpose.
+    with tempfile.TemporaryDirectory() as temp_path:
+        index_data_map = generator.generate(
+            original=smiles,
+            path=temp_path,
+            k_results=num,
+            k_neighborhood=k_neighborhood,
+        )
+        # The generator will create the full graph representation, but for this wrapper we only want to return 
+        # a list of elements that consists of the SMILES strings and the model predictions for those elements.
+        results = [(data['metadata']['smiles'], data['metadata']['prediction'], data['metadata']['distance']) for data in index_data_map.values()]
+        results.sort(key=lambda tupl: tupl[2], reverse=True)
+        return results
 
 class VariableSchedulerCallback(EpochCounterCallback):
 
