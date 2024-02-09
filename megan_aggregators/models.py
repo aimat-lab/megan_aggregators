@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow.keras as ks
 import visual_graph_datasets.typing as tv
 
+from graph_attention_student.models import CUSTOM_OBJECTS
 from graph_attention_student.models import load_model as _load_model
 from graph_attention_student.models.megan import Megan2 as _Megan2
 from megan_aggregators.utils import ASSETS_PATH
@@ -132,9 +133,13 @@ def load_model(model_path: str = DEFAULT_MODEL_PATH) -> ks.models.Model:
 
     :returns: The MEGAN model which is saved at the given folder path
     """
-    model = _load_model(model_path)
-
-    return model
+    scope = {
+        **CUSTOM_OBJECTS,
+        'Megan2': Megan2,
+    }
+    
+    with ks.utils.custom_object_scope(scope):
+        return ks.models.load_model(model_path)
 
 
 def load_ensemble(model_paths: str = DEFAULT_ENSEMBLE_PATHS) -> t.Any:

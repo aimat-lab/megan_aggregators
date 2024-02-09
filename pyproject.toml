@@ -35,7 +35,7 @@ pycomex = ">=0.8.4"
 # visual graph dataset format
 visual-graph-datasets = ">=0.7.2"
 # the MEGAN model implementation
-graph-attention-student = ">=0.1.0"
+graph-attention-student = "==0.13.0"
 
 [tool.poetry.dev-dependencies]
 pytest = ">=7.1.3"

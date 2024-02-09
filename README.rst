@@ -73,34 +73,36 @@ This model can locally be loaded and is ready to make aggregation predictions wi
 
 .. code-block:: python
 
-    import tensorflow.keras as ks
-    from megan_aggregators.models import load_model
-    from megan_aggregators.util import load_processing
+    import numpy as np
+  import tensorflow.keras as ks
+  from megan_aggregators.models import load_model
+  from megan_aggregators.utils import load_processing
 
-    # This will load the MEGAN keras model which can be used to make predictions.
-    model: ks.models.Model = load_model()
-    # The package comes with different pre-trained models. load_model will select the best one by default, 
-    # but different ones can be loaded by providing their string names as an argument.
-    # model = load_model("model_2")
-    # model = load_model("model_3")
-    # ...
-    
-    smiles = 'CCC(CCN)CCC'
-    # This model can now make predictions about given molecules. However, these molecules first have to be 
-    # converted into the appropriate graph representation such that the model can understand them.
-    # This can be done with a "processing" instance.
-    processing = load_processing()
-    graph = processing.process(smiles)
+  # This will load the MEGAN keras model which can be used to make predictions.
+  model: ks.models.Model = load_model()
+  # The package comes with different pre-trained models. load_model will select the best one by default,
+  # but different ones can be loaded by providing their string names as an argument.
+  # model = load_model("model_2")
+  # model = load_model("model_3")
+  # ...
 
-    # "prediction" is a numpy array with the shape (2, ) where the first of the two elements is the 
-    # classifiation logits for the "non-aggregator" class and the second value is the classification 
-    # logits for the "aggregator" class. 
-    predition = model.predict_graphs([graph])[0]
+  smiles = 'CCC(CCN)CCC'
+  # This model can now make predictions about given molecules. However, these molecules first have to be
+  # converted into the appropriate graph representation such that the model can understand them.
+  # This can be done with a "processing" instance.
+  processing = load_processing()
+  graph = processing.process(smiles)
 
-    # The predicted label can be applying the argmax function.
-    # 0 - non-aggregator
-    # 1 - aggregator
-    result = np.argmax(prediction)
+  # "prediction" is a numpy array with the shape (2, ) where the first of the two elements is the
+  # classifiation logits for the "non-aggregator" class and the second value is the classification
+  # logits for the "aggregator" class.
+  prediction, _, _ = model.predict_graphs([graph])[0]
+
+  # The predicted label can be applying the argmax function.
+  # 0 - non-aggregator
+  # 1 - aggregator
+  result = np.argmax(prediction)
+  print(prediction, result)
 
 
 Explaining Predictions
@@ -135,17 +137,17 @@ for the evidence for the "non-aggregator" class.
 
     smiles = 'CCC(CCN)CCC'
     graph = processing.process(smiles)
-    
-    # The model's method "explain_graphs" can be used to create these explanations masks 
+
+    # The model's method "explain_graphs" can be used to create these explanations masks
     # for the input graph.
     # The result of this operation will be the combined node and edge explanation arrays
     # with the following shapes:
     # node_importances: (number of atoms, 2)
     # edge_importances: (number of bonds, 2)
     node_importances, edge_importances = model.explain_graphs([graph])[0]
-    
+
     # ~ visualizing the explanation
-    # This utility function will visualize the different explanations channels into 
+    # This utility function will visualize the different explanations channels into
     # separate axes within the same figure.
     fig = visualize_explanations(
         smiles,
@@ -154,7 +156,7 @@ for the evidence for the "non-aggregator" class.
         edge_importances,
     )
 
-    # Finally we can save the figure as a file to look at it 
+    # Finally we can save the figure as a file to look at it
     fig.savefig('explanations.png')
     
 
@@ -167,6 +169,9 @@ in slightly better reliability at the price of a longer computation time.
 
 .. code-block:: python
 
+    import numpy as np
+
+    from megan_aggregators.utils import load_processing
     from megan_aggregators.models import load_ensemble
 
     # This will load the default ensemble consisting of a selection of the best models.
@@ -177,9 +182,15 @@ in slightly better reliability at the price of a longer computation time.
     processing = load_processing()
     graph = processing.process(smiles)
 
-    # Since the ensemble class implements the same interface as a single model instance, it is possible 
+    # Since the ensemble class implements the same interface as a single model instance, it is possible
     # to use the same methods to make predictions
-    prediction = ensemble.predict_graphs([graphs])[0]
+    prediction = ensemble.predict_graphs([graph])[0]
+
+    # The predicted label can be applying the argmax function.
+    # 0 - non-aggregator
+    # 1 - aggregator
+    result = np.argmax(prediction)
+    print(prediction, result)
 
 
 ==============

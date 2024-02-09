@@ -40,7 +40,7 @@ ASSETS_PATH = os.path.join(PATH, 'assets')
 MODEL_PATH = os.path.join(PATH, 'model')
 # 15.05.23 - If we save the model into the repository then we also need to save the processing file as well
 # for it to make sense. We will also place that into the model folder.
-PROCESSING_PATH = os.path.join(MODEL_PATH, 'process.py')
+PROCESSING_PATH = os.path.join(ASSETS_PATH, 'process.py')
 
 # Use this jinja2 environment to conveniently load the jinja templates which are defined as files within the
 # "templates" folder of the package!
