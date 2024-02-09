@@ -21,7 +21,7 @@ graph = processing.process(smiles)
 # "prediction" is a numpy array with the shape (2, ) where the first of the two elements is the
 # classifiation logits for the "non-aggregator" class and the second value is the classification
 # logits for the "aggregator" class.
-prediction, _, _ = model.predict_graphs([graph])[0]
+prediction = model.predict_graphs([graph])[0]
 
 # The predicted label can be applying the argmax function.
 # 0 - non-aggregator
