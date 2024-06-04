@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow.keras as ks
 
-from megan_aggregators.models import load_model
-from megan_aggregators.utils import load_processing
-from megan_aggregators.utils import generate_counterfactuals
+from megan_aggregators import load_model
+from megan_aggregators import load_processing
+from megan_aggregators.utils import generate_counterfactuals_with_model
 
 np.set_printoptions(precision=2)
 
@@ -29,7 +29,7 @@ print(f'original smiles: {smiles} - label: {result}')
 # The "num" parameter can be used to specify the number of counterfactuals that should be generated.
 # The "k_neighborhood" parameter can be used to specify the number of edits that should be made to the original
 # molecule in order to generate the counterfactuals.
-results: tuple[str, np.ndarray, float] = generate_counterfactuals(
+results: tuple[str, np.ndarray, float] = generate_counterfactuals_with_model(
     model=model,
     smiles=smiles,
     num=10,

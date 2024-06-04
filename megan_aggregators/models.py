@@ -8,7 +8,9 @@ import visual_graph_datasets.typing as tv
 from graph_attention_student.models import CUSTOM_OBJECTS
 from graph_attention_student.models import load_model as _load_model
 from graph_attention_student.models.megan import Megan2 as _Megan2
+from graph_attention_student.torch.megan import Megan
 from megan_aggregators.utils import ASSETS_PATH
+from megan_aggregators.utils import MODEL_PATH
 
 # == GLOBAL VARIABLES ==
 # Here we define some global constant variables that define the default behavior.
@@ -124,8 +126,10 @@ class ModelEnsemble:
                 
                 
                 
-def load_model(model_path: str = DEFAULT_MODEL_PATH) -> ks.models.Model:
+def _load_model(model_path: str = DEFAULT_MODEL_PATH) -> ks.models.Model:
     """
+    DEPRECATED
+    
     Loads the keras model from memory given its ``model_path`` absolute folder path. By default, this
     function will load the default model which is shipped with this package.
 
@@ -140,6 +144,16 @@ def load_model(model_path: str = DEFAULT_MODEL_PATH) -> ks.models.Model:
     
     with ks.utils.custom_object_scope(scope):
         return ks.models.load_model(model_path)
+
+
+def load_model(model_path: str = DEFAULT_MODEL_PATH) -> Megan:
+    """
+    Loads the pytorch model from memory given the ``model_path`` string absolute path of the folder 
+    that contains
+    """
+    path = os.path.join(model_path, 'model.ckpt')
+    model = Megan.load_from_checkpoint(path)
+    return model
 
 
 def load_ensemble(model_paths: str = DEFAULT_ENSEMBLE_PATHS) -> t.Any:

@@ -10,9 +10,8 @@
    :target: https://www.python.org/
 
 
-==========================
-MEGAN: Aggregators Dataset
-==========================
+👩‍🏫 MEGAN: Aggregators Dataset
+==============================
 
 This repository implements the training of a self-explaining MEGAN_ graph neural network model for the
 ``aggregators_binary`` dataset. The primary task is to classify molecular graphs into the two classes
@@ -20,18 +19,17 @@ This repository implements the training of a self-explaining MEGAN_ graph neural
 Aside from that, The MEGAN model additionally creates node and edge attributional
 explanations for each individual prediction.
 
-=======
+
 🔔 News
-=======
+-------
 
 - **May 2023** Added the aggregation model to the MeganExplains web interface: `MeganExplains Aggregation <https://megan.aimat.science/predict/megan_aggregator>`_.
   So you can test out the model without having to install it!
 - **August 2023** - Check out the arxiv preprint of the `paper`_ here: https://arxiv.org/abs/2306.02206
 
 
-=========================
 📦 Installation by Source
-=========================
+-------------------------
 
 first clone the repository:
 
@@ -60,12 +58,11 @@ Afterwards, you can check the install by invoking the CLI:
     python3 -m megan_aggregators.cli --help
 
 
-=============
 🚀 Quickstart
-=============
+-------------
 
 Using the Model
-===============
+~~~~~~~~~~~~~~~
 
 The easiest way to get started is to use the pre-trained model instance that comes shipped with the code. 
 
@@ -73,40 +70,34 @@ This model can locally be loaded and is ready to make aggregation predictions wi
 
 .. code-block:: python
 
-    import numpy as np
-  import tensorflow.keras as ks
-  from megan_aggregators.models import load_model
-  from megan_aggregators.utils import load_processing
+    from megan_aggregators import predict_aggregator
+    from megan_aggregators import generate_counterfactuals
 
-  # This will load the MEGAN keras model which can be used to make predictions.
-  model: ks.models.Model = load_model()
-  # The package comes with different pre-trained models. load_model will select the best one by default,
-  # but different ones can be loaded by providing their string names as an argument.
-  # model = load_model("model_2")
-  # model = load_model("model_3")
-  # ...
+    SMILES: str = 'CCC(CCN)CCC'
 
-  smiles = 'CCC(CCN)CCC'
-  # This model can now make predictions about given molecules. However, these molecules first have to be
-  # converted into the appropriate graph representation such that the model can understand them.
-  # This can be done with a "processing" instance.
-  processing = load_processing()
-  graph = processing.process(smiles)
+    # ~ Aggregation Prediction
+    # The "predict_aggregator" function performs an aggregation prediction for the given SMILES 
+    # string using the default model and returns the probability of the molecule being an aggregator.
+    probability: float = predict_aggregator(SMILES)
+    label = 'aggregator' if probability > 0.5 else 'non-aggregator'
+    print(f'The molecule {SMILES} is classified as {label} ({probability*100:.2f}% aggregator)')
 
-  # "prediction" is a numpy array with the shape (2, ) where the first of the two elements is the
-  # classifiation logits for the "non-aggregator" class and the second value is the classification
-  # logits for the "aggregator" class.
-  prediction = model.predict_graphs([graph])[0]
-
-  # The predicted label can be applying the argmax function.
-  # 0 - non-aggregator
-  # 1 - aggregator
-  result = np.argmax(prediction)
-  print(prediction, result)
+    # ~ Counterfactual Generation
+    # The "generate_counterfactuals" fucntion generates the counterfactuals for the given SMILES 
+    # string representation of a molecule. These counterfactuals are molecules which are structurally 
+    # similar to the original molecule but cause a strongly different prediction by the model. 
+    # The function returns a list of tuples where the first value of the tuple is the counterfactual 
+    # SMILES string and the second value is the models prediction array and the third value is the 
+    # difference in the predicted probabilities.
+    counterfactuals: list[tuple[str, list, float]] = generate_counterfactuals(SMILES, 10)
+    print(f'Counterfactuals for {SMILES}')
+    for smiles, array, distance in counterfactuals:
+        print(f' * {smiles:20} ({array[0] * 100:.2f}% aggregator) - distance: {distance:.2f}')
+        
 
 
 Explaining Predictions
-======================
+~~~~~~~~~~~~~~~~~~~~~~
 
 The MEGAN model is a *self-explaining graph neural network* which means that it is able to produce explanations 
 in addition to the target class predictions. These explanations are supposed to illustrate the structure-property 
@@ -122,14 +113,9 @@ for the evidence for the "non-aggregator" class.
 
 .. code-block:: python
 
-    import matplotlib.pyplot as plt
-    from visual_graph_datasets.visualization.base import draw_image
-    from visual_graph_datasets.visualization.importances import plot_node_importances_background
-    from visual_graph_datasets.visualization.importances import plot_edge_importances_background
-
-    from megan_aggregators.utils import load_processing
-    from megan_aggregators.utils import visualize_explanations
-    from megan_aggregators.models import load_model
+    from megan_aggregators import load_processing
+    from megan_aggregators import load_model
+    from megan_aggregators import visualize_explanations
 
     # We can create the model and the input graph as before
     model = load_model()
@@ -144,7 +130,9 @@ for the evidence for the "non-aggregator" class.
     # with the following shapes:
     # node_importances: (number of atoms, 2)
     # edge_importances: (number of bonds, 2)
-    node_importances, edge_importances = model.explain_graphs([graph])[0]
+    info = model.forward_graphs([graph])[0]
+    node_importances = info['node_importance']
+    edge_importances = info['edge_importance']
 
     # ~ visualizing the explanation
     # This utility function will visualize the different explanations channels into
@@ -158,44 +146,10 @@ for the evidence for the "non-aggregator" class.
 
     # Finally we can save the figure as a file to look at it
     fig.savefig('explanations.png')
-    
-
-Using the Ensemble
-==================
-
-As an alternative to the single model, it is also possible to use an ensemble method to make the predictions. In such 
-an ensemble method, the average of multiple different models are used to make a prediction. This will usually result 
-in slightly better reliability at the price of a longer computation time.
-
-.. code-block:: python
-
-    import numpy as np
-
-    from megan_aggregators.utils import load_processing
-    from megan_aggregators.models import load_ensemble
-
-    # This will load the default ensemble consisting of a selection of the best models.
-    ensemble = load_ensemble()
-
-    # Constructing the graph represention from the SMILES string
-    smiles = 'CCC(CCN)CCC'
-    processing = load_processing()
-    graph = processing.process(smiles)
-
-    # Since the ensemble class implements the same interface as a single model instance, it is possible
-    # to use the same methods to make predictions
-    prediction = ensemble.predict_graphs([graph])[0]
-
-    # The predicted label can be applying the argmax function.
-    # 0 - non-aggregator
-    # 1 - aggregator
-    result = np.argmax(prediction)
-    print(prediction, result)
 
 
-==============
 🧪 Experiments
-==============
+--------------
 
 All the computational experiments performed in the context of this project are implemented in the PyComex_ micro framework for 
 computation experimentation. In this framework, each experiment is implemented as an individual python module ``.py`` file. 
@@ -206,12 +160,12 @@ will be described below:
 - ``train_megan.py`` - This experiment will train a MEGAN model, if provided a valid path to a binary classification visual 
   graph dataset.
 
-=================
+
 🤖 Model Training
-=================
+-----------------
 
 Downloading the Dataset
-=======================
+~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``aggregators_binary`` dataset can be downloaded from the following URL:
 https://bwsyncandshare.kit.edu/s/pGExzNEkjbadKHw
@@ -224,7 +178,7 @@ Since this dataset is rather large with ~400.000 molecules, the dataset is about
 of a high-speed internet connection and an SSD storage device are highly recommended.
 
 Model Training
-==============
+~~~~~~~~~~~~~~
 
 The model training can be performed by executing the python module
 ``megan_aggregators/experiments/train_megan.py``. **Before executing**, however, the value of the global
@@ -240,9 +194,8 @@ After the experiment is finished, the results and several visualizations and art
 for the classification results on the test set and example visualizations of the generated explanations on
 a subset of the test set.
 
-==============
 📖 Referencing
-==============
+--------------
 
 If you use, extend or otherwise mention or work, please cite `the paper <https://arxiv.org/abs/2306.02206>`_ as follows:
 
@@ -255,9 +208,9 @@ If you use, extend or otherwise mention or work, please cite `the paper <https:/
         year={2023}
     }
 
-==========
+
 🫱🏻‍🫲🏾 Credits
-==========
+-----------
 
 * PyComex_ is a micro framework which simplifies the setup, processing and management of computational
   experiments. It is also used to auto-generate the command line interface that can be used to interact

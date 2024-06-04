@@ -1,0 +1,30 @@
+
+.page {
+    width: 100%;
+}
+
+.image-container {
+    width: 100%;
+    height: auto;  
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.image { 
+    max-width: 45%;
+    width: 45%;
+    height: auto;
+    flex-basis: 1;
+}
+
+img {
+    width: 100%;
+    height: auto;
+}
+
+.text {
+    text-align: center;
+}

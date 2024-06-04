@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Report</title>
+</head>
+
+<body>
+
+    {% for page in pages %}
+
+    <div class="page">
+    
+        <h1 class="title">{{ page.title }}</h1>
+
+        <!-- images -->
+        <div class="image-container">
+            {% for image_path in page.images %}
+            <div class="image">
+                <img src="file://{{ image_path }}" />
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- texts -->
+        <div class="text-container">
+            {% for text in page.texts %}
+            <p class="text">{{ text }}</p>
+            {% endfor %}
+        </div>
+
+    </div>
+
+    {# If not the last page, we will start new page #}
+    {% if not loop.last %}
+    <p style="page-break-before: always"></p>
+    {% endif %}
+
+    {% endfor %}
+
+</body>
+
+</html>

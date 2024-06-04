@@ -7,14 +7,19 @@ import pathlib
 import logging
 import tempfile
 import subprocess
+import tempfile
 from typing import List
 import typing as t
 
 import click
+import torch
 import jinja2 as j2
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow.keras as ks
+from weasyprint import HTML, CSS
+from dimorphite_dl import DimorphiteDL
+from torch.utils.data import Dataset
 from scipy.special import softmax
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
@@ -30,6 +35,7 @@ from vgd_counterfactuals.generate.molecules import get_neighborhood
 from graph_attention_student.keras import CUSTOM_OBJECTS
 from graph_attention_student.training import EpochCounterCallback
 from graph_attention_student.models import load_model as load_model_raw
+from graph_attention_student.torch.megan import Megan
 
 
 PATH = pathlib.Path(__file__).parent.absolute()
@@ -304,15 +310,15 @@ def visualize_explanations(smiles: str,
     return fig
             
 
-def generate_counterfactuals(model: t.Any,
-                             smiles: str,
-                             num: int = 15,
-                             k_neighborhood: int = 1,
-                             processing: MoleculeProcessing = load_processing(),
-                             fix_protonation: bool = False,
-                             min_ph: float = 6.4,
-                             max_ph: float = 6.4,
-                             ) -> List[tuple[str, np.ndarray]]:
+def generate_counterfactuals_with_model(model: Megan,
+                                        smiles: str,
+                                        num: int = 15,
+                                        k_neighborhood: int = 1,
+                                        processing: MoleculeProcessing = load_processing(),
+                                        fix_protonation: bool = False,
+                                        min_ph: float = 6.4,
+                                        max_ph: float = 6.4,
+                                        ) -> List[tuple[str, np.ndarray, float]]:
     """
     Given a loaded ``model`` and a SMILES string ``smiles`` this function will generate a number of
     counterfactuals for the given input molecule. The number of counterfactuals to be generated is given by 
@@ -329,14 +335,27 @@ def generate_counterfactuals(model: t.Any,
     :returns: List of tuples. Each tuple consists of the SMILES string and the model prediction output array.
     """
     
+    # Since we are dealing with a classification problem here, we need to adjust the distance function
+    # to return the difference in the probability of the original and the modified molecule being of the
+    # same class.
     def distance_func(org, mod):
         label = np.argmax(org)
+        # An important thing to consider here is that the model forward pass itself only returns the 
+        # classification logits, which means that we will need to apply the softmax operation manually 
+        # to get the probabilities.
         return softmax(org)[label] - softmax(mod)[label]
+    
+    # We need to customize the predict function to use the methods available for the torch version of the 
+    # Megan model.
+    def predict_func(model, graphs):
+        infos: list[dict] = model.forward_graphs(graphs)
+        return [info['graph_output'] for info in infos]
     
     generator = CounterfactualGenerator(
         model=model,
         processing=processing,
         distance_func=distance_func,
+        predict_func=predict_func,
         neighborhood_func=lambda *args, **kwargs: get_neighborhood(
             *args, 
             **kwargs, 
@@ -358,9 +377,43 @@ def generate_counterfactuals(model: t.Any,
         )
         # The generator will create the full graph representation, but for this wrapper we only want to return 
         # a list of elements that consists of the SMILES strings and the model predictions for those elements.
-        results = [(data['metadata']['smiles'], data['metadata']['prediction'], data['metadata']['distance']) for data in index_data_map.values()]
+        results = [
+            (
+                data['metadata']['smiles'], 
+                softmax(data['metadata']['prediction']), 
+                data['metadata']['distance']
+            ) 
+            for data in index_data_map.values()
+        ]
         results.sort(key=lambda tupl: tupl[2], reverse=True)
         return results
+
+
+def get_protonations(smiles: str, 
+                     min_ph: float = 6.4, 
+                     max_ph: float = 6.4,
+                     max_variants: int = 100,
+                     ) -> List[str]:
+    """
+    Given a SMILES string ``smiles`` this function will return a list of SMILES strings which represent the
+    different protonation states of the molecule at the given pH range. The ``min_ph`` and ``max_ph`` arguments
+    will determine the pH range which will be used to generate the protonation states.
+
+    :param smiles: The SMILES string of the molecule
+    :param min_ph: The minimum pH value of the pH range
+    :param max_ph: The maximum pH value of the pH range
+
+    :returns: List of SMILES strings representing the different protonation states of the molecule
+    """
+    dmph = DimorphiteDL(
+        min_ph=min_ph,
+        max_ph=max_ph,
+        pka_precision=0.1,
+        label_states=False,
+        max_variants=max_variants,
+    )
+    return dmph.protonate(smiles)
+
 
 class VariableSchedulerCallback(EpochCounterCallback):
 
@@ -385,3 +438,125 @@ class VariableSchedulerCallback(EpochCounterCallback):
         if self.epoch > self.epoch_start:
             self.value = self.value_start + (self.epoch / self.epoch_end) * self.step
             variable.assign(self.value)
+
+
+class ChunkedDataset(Dataset):
+    
+    def __init__(self, 
+                 path: str) -> None:
+        # This is the thingy here
+        self.path = path
+        
+        files = os.listdir(path)
+        
+        # In this list we will store the file paths to the actual PT files that represent the 
+        # dataset chunks.
+        self.file_paths: t.List[str] = []
+        for file in files:
+            if file.endswith('.pt'):
+                self.file_paths.append(os.path.join(path, file))
+        self.file_paths.sort()
+        self.num_files = len(self.file_paths)
+    
+        self.current_index = 0
+        self.current_path = self.file_paths[self.current_index]
+        
+        # With this integer we will track how many items of the current chunk have been consumed already and 
+        # once all the items (==chunk length) have been consumed we will use that as a signal to load the next
+        # chunk.
+        self.counter = 0
+        
+        # We will use this list to actually store the torch geometric Data instances that are loaded 
+        # from the dataset
+        self.data: t.List[t.Any] = []
+        
+        # To get started we load the first chunk here.
+        self.load_chunk(self.current_index)
+        
+    def load_chunk(self, index: int) -> None:
+        print(f'loading chunk {index}...')
+        self.current_path = self.file_paths[index]
+        self.data = torch.load(self.current_path)
+        
+    def next_index(self):
+        if self.current_index == self.num_files - 1:
+            self.current_index = 0
+        else:
+            self.current_index += 1
+        
+    def __len__(self):
+        return len(self.data)
+        
+    def __getitem__(self, idx: int):
+        
+        if self.counter >= len(self.data):
+            self.next_index()
+            self.load_chunk(self.current_index)
+            self.counter = 0
+            
+        self.counter += 1
+        return self.data[idx]
+    
+    
+    
+def create_report(pages: list[dict],
+                  path: str,
+                  template_name: str = 'report.html.j2'
+                  ) -> None:
+    """
+    Generates a PDF report file at the given ``path`` from the given list of ``pages``.
+    
+    :param pages: A list of dict objects where each dict object represents one page of the report. Each page 
+        should have the following keys: "title", "images", "texts". The "title" key should contain a string
+        which will be used as the title of the page. The "images" key should contain a list of image file paths
+        or matplotlib figure instances which will be displayed on the page. The "texts" key should contain a list
+        of strings which will be displayed as text on the page.
+    :param path: The absolute path to the PDF file which will be created. 
+    
+    :returns:
+    """
+    template: j2.Template = TEMPLATE_ENV.get_template(template_name)
+        
+    with tempfile.TemporaryDirectory() as temp_path:
+        
+        for page_index, page in enumerate(pages):
+        
+            # ~ possibly converting images into file
+            # The images can be supplied in different formats but in the end we need to 
+            # convert them such that they are unique image files in the temporary directory.
+            image_paths: list[str] = []
+            for image_index, image in enumerate(page['images']):
+                
+                image_name = f'{page_index}_{image_index}.png'
+                image_path = os.path.join(temp_path, image_name)
+                
+                # If the image is a string then we assume it is the absolute path to an already 
+                # existing image file and in this case we have to copy that file to the temporary
+                # directory.
+                if isinstance(image, str):
+                    # We need to copy the file to the temporary directory
+                    shutil.copy(image, image_path)
+                    
+                # Alternatively we can also pass the image as a matplotlib figure instance. In this case
+                # we will save the figure to a file in the temporary directory.
+                elif isinstance(image, plt.Figure):
+                    fig.savefig(image_path)
+                    
+                image_paths.append(image_path)
+                
+                page['_images'] = page['images']
+                page['images'] = image_paths
+            
+        # Finally we can render the template.
+        context = {
+            'pages': pages,
+        }
+        
+        html_content: str = template.render(
+            **context,
+        )
+        
+        html = HTML(string=html_content)
+        css = CSS(os.path.join(TEMPLATES_PATH, 'report.css'))
+        html.write_pdf(path, stylesheets=[css])
+    
