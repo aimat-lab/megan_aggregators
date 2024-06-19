@@ -82,6 +82,16 @@ This model can locally be loaded and is ready to make aggregation predictions wi
     label = 'aggregator' if probability > 0.5 else 'non-aggregator'
     print(f'The molecule {SMILES} is classified as {label} ({probability*100:.2f}% aggregator)')
 
+    # ~ Protonation States
+    # The "get_protonations" function generates all possible protonation states for the given SMILES
+    # string within the given pH range. The output of the function will be a list of multiple SMILES 
+    # strings which represent the different protonation states.
+    print('Protonation states:')
+    protonated_smiles = get_protonations(SMILES, min_ph=6.4, max_ph=6.4)
+    for smiles in protonated_smiles:
+        _probability: float = predict_aggregator(smiles)
+        print(f' * {smiles} is classified as ({_probability*100:.2f}% aggregator)')
+
     # ~ Counterfactual Generation
     # The "generate_counterfactuals" fucntion generates the counterfactuals for the given SMILES 
     # string representation of a molecule. These counterfactuals are molecules which are structurally 

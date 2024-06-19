@@ -441,6 +441,25 @@ class VariableSchedulerCallback(EpochCounterCallback):
 
 
 class ChunkedDataset(Dataset):
+    """
+    Implements a PyTorch Dataset which is able to load a pre-chunked dataset. These chunked datasets 
+    consist of multiple .PT files which actually contain the already processed PyG Data instances.
+    These files can simply be loaded to directly access the data instances for the training.
+    
+    The constructor of this class accepts a folder path as an argument and will load all the .PT files 
+    in that folder as individual chunks of the dataset.
+    
+    While iterating over a ChunkedDataset such as this, only one chunk at a time is actually loaded into 
+    the memory, the datasets data generator function will yield all the Data instances contained in that 
+    chunk until all of them are exhausted. Only then the current chunk will be unloaded and the next chunk 
+    will be loaded.
+    
+    NOTE: Each chunk will be considered it's own dataset! When training a model, this means that one epoch 
+          will only iterate the elements of a single chunk and not all the elements of the dataset. 
+          This has been done because the implementation is much easier and from a user perspective, the 
+          only necessary step to accomodate this is to multiple the number of the epochs by the number of
+          chunks in the dataset.
+    """
     
     def __init__(self, 
                  path: str) -> None:
@@ -452,9 +471,14 @@ class ChunkedDataset(Dataset):
         # In this list we will store the file paths to the actual PT files that represent the 
         # dataset chunks.
         self.file_paths: t.List[str] = []
+        # We'll simply consider every file in the given folder path that has the PT file ending
         for file in files:
             if file.endswith('.pt'):
                 self.file_paths.append(os.path.join(path, file))
+                
+        # The most common naming scheme for these kinds of chunk paths is to have the chunk index 
+        # as the last part of the file name. We can use this to sort the file paths in the correct
+        # order according to the numerical order of these chunk indices.
         self.file_paths.sort()
         self.num_files = len(self.file_paths)
     
@@ -474,11 +498,23 @@ class ChunkedDataset(Dataset):
         self.load_chunk(self.current_index)
         
     def load_chunk(self, index: int) -> None:
+        """
+        Unloads the current chunk and instead loads the chunk with the given ``index``. After 
+        calling this method, the internal ``self.data`` attribute will be populated as a list 
+        of the Data instances of the new chunk.
+        """
         print(f'loading chunk {index}...')
         self.current_path = self.file_paths[index]
         self.data = torch.load(self.current_path)
         
     def next_index(self):
+        """
+        Increments the ``self.current_index`` integer index of the chunk
+        
+        It is recommended to use this method instead of manually incrementing the index, because 
+        this method will consider a index overflow and will cyclically reset the index to 0 if the
+        end of the list of files is reached.
+        """
         if self.current_index == self.num_files - 1:
             self.current_index = 0
         else:
