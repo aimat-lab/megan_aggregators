@@ -15,17 +15,17 @@ SMILES: str = 'CCC(CCN)CCC'
 # string using the default model and returns the probability of the molecule being an aggregator.
 probability: float = predict_aggregator(SMILES)
 label = 'aggregator' if probability > 0.5 else 'non-aggregator'
-print(f'The molecule {SMILES} is classified as {label} ({probability*100:.2f}% aggregator)')
+print(f'\nThe molecule {SMILES} is classified as {label} ({probability*100:.2f}% aggregator)')
 
 # ~ Protonation States
 # The "get_protonations" function generates all possible protonation states for the given SMILES
 # string within the given pH range. The output of the function will be a list of multiple SMILES 
 # strings which represent the different protonation states.
-print('Protonation states:')
+print('\nProtonation states:')
 protonated_smiles = get_protonations(SMILES, min_ph=6.4, max_ph=6.4)
 for smiles in protonated_smiles:
     _probability: float = predict_aggregator(smiles)
-    print(f' * {smiles} is classified as ({_probability*100:.2f}% aggregator)')
+    print(f' * {smiles:20} ({_probability*100:.2f}% aggregator)')
 
 # ~ Counterfactual Generation
 # The "generate_counterfactuals" fucntion generates the counterfactuals for the given SMILES 
@@ -35,7 +35,7 @@ for smiles in protonated_smiles:
 # SMILES string and the second value is the models prediction array and the third value is the 
 # difference in the predicted probabilities.
 counterfactuals: list[tuple[str, list, float]] = generate_counterfactuals(SMILES, 10)
-print(f'Counterfactuals for {SMILES}')
+print(f'\nCounterfactuals for {SMILES}')
 for smiles, array, distance in counterfactuals:
     print(f' * {smiles:20} ({array[0] * 100:.2f}% aggregator) - distance: {distance:.2f}')
     

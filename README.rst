@@ -42,8 +42,9 @@ the environment, you can install the package in editable mode using the followin
 
 .. code-block:: shell
 
-    conda create -m agg python=3.10 torch
+    conda create -m agg python=3.10
     conda activate agg
+    pip install torch
     pip -e install megan_aggregators/
 
 **Optional.** On Linux it might be necessary to install Tk if not already installed
@@ -52,12 +53,19 @@ the environment, you can install the package in editable mode using the followin
 
     sudo apt install python3-tk
 
-**Checking the installation.** Afterwards, you can check the install by invoking the CLI:
+**Checking the installation.** Afterwards, you can check the installation by running the quickstart example script:
 
 .. code-block:: shell
 
-    python3 -m megan_aggregators.cli --version
-    python3 -m megan_aggregators.cli --help
+    python -m megan_aggregators.examples.00_quickstart
+
+**Installation on Virtual Machines.** On virtual machines, ``cuda`` is usually not available. However, installing pytorch with 
+the above mentioned method will result in segmentation faults.
+Instead, you can replace the ``torch`` installation with the cpu-only version like this:
+
+.. code-block:: shell
+
+    conda install pytorch cpuonly -c pytorch
 
 
 🚀 Quickstart
