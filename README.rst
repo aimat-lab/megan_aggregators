@@ -37,20 +37,22 @@ first clone the repository:
 
     git clone https://github.com/aimat-lab/megan_aggregators
 
-Then in the main folder run a ``pip install``:
+For installation, it is recommended to create a new ``conda`` environment based on Python 3.10. After activating 
+the environment, you can install the package in editable mode using the following commands:
 
 .. code-block:: shell
 
-    cd megan_aggregators
-    python3 -m pip -e install .
+    conda create -m agg python=3.10 torch
+    conda activate agg
+    pip -e install megan_aggregators/
 
-On Linux it might be necessary to install Tk if not already installed
+**Optional.** On Linux it might be necessary to install Tk if not already installed
 
 .. code-block:: shell
 
     sudo apt install python3-tk
 
-Afterwards, you can check the install by invoking the CLI:
+**Checking the installation.** Afterwards, you can check the install by invoking the CLI:
 
 .. code-block:: shell
 
@@ -71,6 +73,7 @@ This model can locally be loaded and is ready to make aggregation predictions wi
 .. code-block:: python
 
     from megan_aggregators import predict_aggregator
+    from megan_aggregators import get_protonations
     from megan_aggregators import generate_counterfactuals
 
     SMILES: str = 'CCC(CCN)CCC'
