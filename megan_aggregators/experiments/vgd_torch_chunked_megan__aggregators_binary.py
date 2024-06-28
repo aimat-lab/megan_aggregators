@@ -181,7 +181,7 @@ OUTPUT_NORM: t.Optional[float] = None
 
 # :param BATCH_SIZE:
 #       The number of elements to be processed in one batch during the training process.
-BATCH_SIZE: int = 300
+BATCH_SIZE: int = 200
 # :param EPOCHS:
 #       The number of epochs to train the model for.
 EPOCHS: int = int(50 * 1.0)

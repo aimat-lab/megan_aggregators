@@ -16,8 +16,11 @@ megan_aggregators/experiments/results/*
 megan_aggregators/examples/results/*
 
 # cache
+tests/__pycache__/*
 megan_aggregators/__pycache__/*
 megan_aggregators/models/__pycache__/*
 megan_aggregators/data/__pycache__/*
 
+# artifacts
+tests/artifacts/*
 megan_aggregators/assets/models/*

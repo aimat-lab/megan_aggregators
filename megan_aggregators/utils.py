@@ -2,6 +2,7 @@
 Module containing various utility methods.
 """
 import os
+import random
 import shutil
 import pathlib
 import logging
@@ -462,7 +463,8 @@ class ChunkedDataset(Dataset):
     """
     
     def __init__(self, 
-                 path: str) -> None:
+                 path: str,
+                 ) -> None:
         # This is the thingy here
         self.path = path
         
@@ -481,7 +483,7 @@ class ChunkedDataset(Dataset):
         # order according to the numerical order of these chunk indices.
         self.file_paths.sort()
         self.num_files = len(self.file_paths)
-    
+        
         self.current_index = 0
         self.current_path = self.file_paths[self.current_index]
         
@@ -522,6 +524,7 @@ class ChunkedDataset(Dataset):
         
     def __len__(self):
         return len(self.data)
+        #return 10_000
         
     def __getitem__(self, idx: int):
         
@@ -533,6 +536,67 @@ class ChunkedDataset(Dataset):
         self.counter += 1
         return self.data[idx]
     
+    
+class MultiChunkedDataset(Dataset):
+    
+    def __init__(self, 
+                 path: str,
+                 num_chunks: int = 1,
+                 ) -> None:
+        
+        # This is the thingy here
+        self.path = path
+        self.num_chunks = num_chunks
+        
+        files = os.listdir(path)
+        
+        # In this list we will store the file paths to the actual PT files that represent the 
+        # dataset chunks.
+        self.file_paths: t.List[str] = []
+        # We'll simply consider every file in the given folder path that has the PT file ending
+        for file in files:
+            if file.endswith('.pt'):
+                self.file_paths.append(os.path.join(path, file))
+                
+        self.indices = list(range(len(self.file_paths)))
+        
+        # We will use this list to actually store the torch geometric Data instances that are loaded 
+        # from the dataset
+        self.data: t.List[t.Any] = []
+        
+        self.current_indices = []
+        self.counter = 0
+        
+        # To get started we load the first chunk here.
+        self.sample_chunks()
+        
+    def sample_chunks(self) -> None:
+        """
+        Unloads the current chunk and instead loads the chunk with the given ``index``. After 
+        calling this method, the internal ``self.data`` attribute will be populated as a list 
+        of the Data instances of the new chunk.
+        """
+        self.current_indices = random.sample(self.indices, self.num_chunks)
+        
+        print(f'loading chunks {self.current_indices}...')
+        
+        for index in self.current_indices:
+            path = self.file_paths[index]
+            self.data += torch.load(path)
+        
+    def __len__(self):
+        #return 50_000
+        return int(len(self.data) * 0.98)
+        
+    def __getitem__(self, idx: int):
+        
+        if self.counter >= len(self):
+            #self.sample_chunks()
+            self.counter = 0
+            
+        self.counter += 1
+        return self.data[idx]
+
     
     
 def create_report(pages: list[dict],
