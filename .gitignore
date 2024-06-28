@@ -1,0 +1,23 @@
+.identity.json
+
+# Environment
+venv/*
+wandb/*
+lightning_logs/*
+explanation.png
+
+# IDE config
+.idea/*
+.vscode/*
+.cache/*
+
+# results
+megan_aggregators/experiments/results/*
+megan_aggregators/examples/results/*
+
+# cache
+megan_aggregators/__pycache__/*
+megan_aggregators/models/__pycache__/*
+megan_aggregators/data/__pycache__/*
+
+megan_aggregators/assets/models/*
