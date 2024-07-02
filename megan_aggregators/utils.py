@@ -206,6 +206,7 @@ def plot_roc_curve(ax: plt.Axes,
         label=label,
         ls='-',
     )
+    ax.legend()
 
     ax.set_xlim(-0.05, 1.05)
     ax.set_xlabel('False Positive Rate')

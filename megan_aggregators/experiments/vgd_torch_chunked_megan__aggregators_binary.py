@@ -190,6 +190,7 @@ EPOCHS: int = int(50 * 1.0)
 #       The learning rate for the model training process.
 LEARNING_RATE: float = 1e-3
 
+__TESTING__ = True
 
 experiment = Experiment.extend(
     'vgd_torch_chunked_megan.py',

@@ -7,6 +7,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
+from imageio.v2 import imread
 from sklearn.metrics import r2_score
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
@@ -31,6 +32,7 @@ from graph_attention_student.visualization import plot_regression_fit
 from graph_attention_student.torch.megan import Megan
 from graph_attention_student.torch.model import AbstractGraphModel
 from graph_attention_student.torch.data import data_list_from_graphs
+from graph_attention_student.utils import array_normalize
 
 from megan_aggregators.utils import ChunkedDataset, MultiChunkedDataset, GraphDataset
 from megan_aggregators.utils import EXPERIMENTS_PATH
@@ -222,8 +224,6 @@ EPOCHS: int = 200
 LEARNING_RATE: float = 1e-3
 
 
-WANDB_PROJECT = None
-
 __DEBUG__ = True
 __TESTING__ = True
 
@@ -288,144 +288,62 @@ def evaluate_model(e: Experiment,
     # In this section we generate the performance metrics and artifacts for models depending on the specific 
     # tasks type because regression and classification tasks need be treated differently.
 
-    if e.DATASET_TYPE == 'regression':
-        e.log('regression task...')
-        
-        fig, rows = plt.subplots(
-            ncols=e['output_dim'],
-            nrows=1,
-            figsize=(e['output_dim'] * 5, 5),
-            squeeze=False
-        )
-        for target_index in range(e['output_dim']):
-            
-            ax = rows[0][target_index]
-            target_name = e.TARGET_NAMES[target_index]
-            
-            values_true = out_true[:, target_index]
-            values_pred = out_pred[:, target_index]
-            e[f'out/true'] = values_true
-            e[f'out/pred'] = values_pred
-            
-            r2_value = r2_score(values_true, values_pred)
-            mse_value = mean_squared_error(values_true, values_pred)
-            mae_value = mean_absolute_error(values_true, values_pred)
-            e[f'r2/{target_index}'] = r2_value
-            e[f'mae/{target_index}'] = mae_value
-            
-            plot_regression_fit(
-                values_true, values_pred,
-                ax=ax,
-            )
-            ax.set_title(f'target {target_index} - {target_name}\n'
-                            f'R2: {r2_value:.3f} - MAE: {mae_value:.3f}')
-            
-            e.log(f' * {target_index}: {target_name}'
-                    f' - r2: {r2_value:.3f}'
-                    f' - mse: {mse_value:.3f}'
-                    f' - mae: {mae_value:.3f}')
-            
-        fig.savefig(os.path.join(e.path, 'regression.pdf'))
-        fig.savefig(os.path.join(e.path, 'regression.png'), dpi=200)
-        plt.close(fig)
+    num_classes = out_pred.shape[1]
+    e.log(f'classification with {num_classes} classes')
     
-    elif e.DATASET_TYPE == 'classification':
-        e.log('classification task...')
-
-        num_classes = out_pred.shape[1]
-        e.log(f'classification with {num_classes} classes')
+    # labels_true: (B, )
+    labels_true = np.argmax(out_true, axis=-1)
+    # labels_pred: (B, )
+    labels_pred = np.argmax(out_pred, axis=-1)
+    
+    acc_value = accuracy_score(labels_true, labels_pred)
+    e[f'acc'] = acc_value
+    e.log(f' * acc: {acc_value:.3f}')
+    
+    e.log('plotting confusion matrix...')
+    
+    cm = confusion_matrix(labels_true, labels_pred)
+    
+    fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(5, 5))
+    ticklabels = list(e.TARGET_NAMES.values())
+    sns.heatmap(
+        cm, 
+        ax=ax, 
+        annot=True, 
+        fmt='02d',
+        cmap='viridis',
+        xticklabels=ticklabels,
+        yticklabels=ticklabels,
+        linewidths=0,
+    )
+    fig.savefig(os.path.join(e.path, 'confusion_matrix.pdf'))
+    plt.close(fig)
+    
+    # Only if the classification has exactly 2 clases we can calculate additional metrics for 
+    # binary classification as well, such as the AUROC score and the F1 metric.
+    if num_classes == 2:
         
-        # labels_true: (B, )
-        labels_true = np.argmax(out_true, axis=-1)
-        # labels_pred: (B, )
-        labels_pred = np.argmax(out_pred, axis=-1)
+        f1_value = f1_score(labels_true, labels_pred)
+        e[f'f1'] = f1_value
+        e.log(f' * f1: {f1_value:.3f}')
+    
+        auc_value = roc_auc_score(out_true[:, 1], out_pred[:, 1])
+        e[f'auc'] = auc_value
+        e.log(f' * auc: {auc_value:.3f}')
         
-        acc_value = accuracy_score(labels_true, labels_pred)
-        e[f'acc'] = acc_value
-        e.log(f' * acc: {acc_value:.3f}')
+        # ~ roc curve
+        e.log('plotting the AUC curve...')
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        ax.set_title('Receiver Operating Curve')
+        plot_roc_curve(ax, out_true[:, 1], out_pred[:, 1])
+        e.commit_fig('roc_curve.png', fig)
         
+        # ~ confusion matrix
         e.log('plotting confusion matrix...')
-        
-        cm = confusion_matrix(labels_true, labels_pred)
-        
-        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(5, 5))
-        ticklabels = list(e.TARGET_NAMES.values())
-        sns.heatmap(
-            cm, 
-            ax=ax, 
-            annot=True, 
-            fmt='02d',
-            cmap='viridis',
-            xticklabels=ticklabels,
-            yticklabels=ticklabels,
-            linewidths=0,
-        )
-        fig.savefig(os.path.join(e.path, 'confusion_matrix.pdf'))
-        plt.close(fig)
-        
-        # Only if the classification has exactly 2 clases we can calculate additional metrics for 
-        # binary classification as well, such as the AUROC score and the F1 metric.
-        if num_classes == 2:
-            
-            f1_value = f1_score(labels_true, labels_pred)
-            e[f'f1'] = f1_value
-            e.log(f' * f1: {f1_value:.3f}')
-        
-            auc_value = roc_auc_score(out_true[:, 1], out_pred[:, 1])
-            e[f'auc'] = auc_value
-            e.log(f' * auc: {auc_value:.3f}')
-            
-            e.log('plotting the AUC curve...')
-            
-            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-            ax.set_title('Receiver Operating Curve')
-            fpr, tpr, _ = roc_curve(out_true[:, 1], out_pred[:, 1])
-            ax.plot(
-                fpr, tpr,
-                color='orange',
-                label=f'AUC: {auc_value:.3f}'
-            )
-            ax.plot(
-                [0, 1], [0, 1],
-                color='lightgray',
-                zorder=-10,
-                label='random'
-            )
-            ax.set_xlabel('False Positive Rate')
-            ax.set_ylabel('True Positive Rate')
-            ax.legend()
-            fig.savefig(os.path.join(e.path, 'auc.pdf'))
-            plt.close(fig)
-        
-    # ~ plotting loss over epochs
-    
-    logs_path = os.path.join(e.path, 'logs', 'version_0', 'metrics.csv')
-    if os.path.exists(logs_path):
-        e.log('reading the training logs and plotting the loss...')
-        df = pd.read_csv(logs_path)
-        
-        keys = [name for name in df.columns.tolist() if name != 'epoch' and name.endswith('epoch')]
-        e.log(f'plotting the following metrics: {keys}')
-        
-        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(5, 5))
-        for key in keys:
-            values = df[key].to_numpy()
-            values = values[~np.isnan(values)]
-            final_value = values[-1]
-            
-            ax.plot(
-                values,
-                label=f'{key} ({final_value:.2f})'
-            )
-        
-        ax.legend()
-        ax.set_title('Loss over Training')
-        ax.set_ylabel('Loss')
-        ax.set_xlabel('Epoch')
-        fig.savefig(os.path.join(e.path, 'loss.pdf'))
-        
-    else:
-        e.log('no training logs found...')
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        ax.set_title('Confusion Matrix')
+        plot_confusion_matrix(ax, labels_true, labels_pred, target_names=list(e.TARGET_NAMES.values()))
+        e.commit_fig('confusion_matrix.png', fig)
         
     # ~ evaluating explanations
     e.log('evaluating Megan explanations...')
@@ -470,7 +388,7 @@ def evaluate_model(e: Experiment,
         num_targets=e.FINAL_UNITS[-1],
     )
     fig.savefig(os.path.join(e.path, 'leave_one_out.pdf'))
-    
+
     
 @experiment.hook('validate_model', default=False, replace=False)
 def validate_model(e: Experiment,
@@ -506,6 +424,64 @@ def validate_model(e: Experiment,
     
     return result, out_true, out_pred
 
+@experiment.hook('plot_example_explanations', default=False, replace=False)
+def plot_example_explanations(e: Experiment,
+                              model: Megan,
+                              dataset: dict,
+                              ) -> None:
+    """
+    This hook will generate a figure that plots the explanations derived from the given model for 
+    all the elements contained in the given dataset. Returns the Figure object.
+    """
+    num_elements = len(dataset)
+    fig, rows = plt.subplots(
+        nrows=2, 
+        ncols=num_elements, 
+        figsize=(num_elements * 12, 20), 
+        squeeze=False
+    )
+    
+    graphs = [data['metadata']['graph'] for data in dataset.values()]
+    infos = model.forward_graphs(graphs)
+    
+    for i, graph, info, (index, data) in zip(range(num_elements), graphs, infos, dataset.items()):
+        
+        image_path = data['image_path']
+        image = imread(image_path)
+        extent = [0, image.shape[0], 0, image.shape[1]]
+    
+        node_importances = array_normalize(info['node_importance'])
+        edge_importances = array_normalize(info['edge_importance'])
+    
+        for k in range(2):
+            
+            ax = rows[k][i]
+            ax.get_xaxis().set_ticks([])
+            ax.get_yaxis().set_ticks([])
+            ax.imshow(image, extent=extent)
+            
+            plot_node_importances_background(
+                g=graph,
+                ax=ax,
+                node_positions=graph['node_positions'],
+                node_importances=node_importances[:, k],
+            )
+            
+            plot_edge_importances_background(
+                g=graph,
+                ax=ax,
+                node_positions=graph['node_positions'],
+                edge_importances=edge_importances[:, k],
+            )
+            
+            if k == 0:
+                ax.set_title(f'index: {index}\n'
+                             f'true: {graph["graph_labels"]} - pred: {info["graph_output"]}')
+                
+            if i == 0:
+                ax.set_ylabel(f'channel {k} - {e.CHANNEL_INFOS[k]["name"]}')
+
+    return fig
 
 
 @experiment
@@ -515,7 +491,7 @@ def experiment(e: Experiment):
     
     if e.__TESTING__:
         e.log('experiment in testing mode...')
-        e.EPOCHS = 3
+        e.EPOCHS = 10
     
     # ~ loading the test dataset
     # For a chunked dataset, the test set is saved separately from the training set. The test set is saved in the format 
@@ -548,9 +524,29 @@ def experiment(e: Experiment):
             log_step=1000,
         )
         dataset_val = reader_val.read()
+        e.log(f'loaded {len(dataset_val)} validation elements')
     else: 
         e.log('no validation dataset found, using the test set for validation...')
         dataset_val = index_data_map
+        
+    # 02.07.24
+    # The external dataset is a very small dataset of a few relatively certainly known elements
+    # that can be used to compare model performance across different model versions as this 
+    # dataset always stays the same. For better debugging we will actually evaluate on this 
+    # dataset cont. during training.
+    ext_path = os.path.join(e.CHUNKED_DATASET_PATH, 'ext')
+    if os.path.exists(ext_path):
+        e.log(f'loading the external dataset @ {ext_path}...')
+        reader_ext = VisualGraphDatasetReader(
+            path=ext_path,
+            logger=e.logger,
+            log_step=100,   
+        )
+        dataset_ext = reader_ext.read()
+        e.log(f'loaded {len(dataset_ext)} external elements')
+    else:
+        e.log('no external dataset found, using the test set instead...')
+        dataset_ext = index_data_map
     
     # ~ checking for input problems
     for index, data in index_data_map.items():
@@ -588,6 +584,10 @@ def experiment(e: Experiment):
             self.result_path = os.path.join(e.path, 'result_best.json')
             
         def on_train_epoch_end(self, trainer, module):
+            
+            device = model.device
+            model.to('cpu')
+            model.eval()
             
             # ~ tracking training variables
             # First of all we are going to track the training metrics, which includes all the different kinds
@@ -627,13 +627,37 @@ def experiment(e: Experiment):
             # and some example explanations. These will hopefully be useful for debugging.
             fig, ax = plt.subplots(figsize=(8, 8))
             plot_roc_curve(ax, out_true[:, 1], out_pred[:, 1])
-            e.track('roc_auc_curve', fig)
+            e.track('val_roc_curve', fig)
             
             fig, ax = plt.subplots(figsize=(8, 8))
             labels_true = np.argmax(out_true, axis=-1)
             labels_pred = np.argmax(out_pred, axis=-1)
             plot_confusion_matrix(ax, labels_true, labels_pred, target_names=list(e.TARGET_NAMES.values()))
             e.track('val_confusion_matrix', fig)
+            
+            fig = e.apply_hook(
+                'plot_example_explanations',
+                model=model,
+                dataset=dict(list(dataset_val.items())[:4]),
+            )
+            e.track('val_example_explanations', fig)
+
+            # ~ external dataset
+            # We also want to determine the model performance for the external dataset. This is a small 
+            # dataset that stays fixed across different model version and contains molecules with 
+            # relatively certain labels.
+            
+            e.log('validating model on external dataset...')
+            result, _, _ = e.apply_hook(
+                'validate_model',
+                model=model,
+                dataset=dataset_ext,
+            )
+            e.track_many({f'ext_{key}': value for key, value in result.items()})
+            
+            model.to(device)
+            model.train()
+    
     
     e.log('constructing the model...')
     e.log(f' * units: {e.UNITS}')
