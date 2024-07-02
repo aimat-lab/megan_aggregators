@@ -32,8 +32,10 @@ from graph_attention_student.torch.megan import Megan
 from graph_attention_student.torch.model import AbstractGraphModel
 from graph_attention_student.torch.data import data_list_from_graphs
 
-from megan_aggregators.utils import ChunkedDataset, MultiChunkedDataset
+from megan_aggregators.utils import ChunkedDataset, MultiChunkedDataset, GraphDataset
 from megan_aggregators.utils import EXPERIMENTS_PATH
+from megan_aggregators.utils import plot_roc_curve
+from megan_aggregators.utils import plot_confusion_matrix
 
 
 # == DATASET PARAMETERS ==
@@ -103,7 +105,7 @@ PROJECTION_UNITS: t.List[int] = []
 #       in that layer of the prediction network.
 #       Note that the last value of this list determines the output shape of the entire network and 
 #       therefore has to match the number of target values given in the dataset.
-FINAL_UNITS: t.List[int] = [32, 1]
+FINAL_UNITS: t.List[int] = [1]
 # :param IMPORTANCE_FACTOR:
 #       This is the coefficient that is used to scale the explanation co-training loss during training.
 #       Roughly, the higher this value, the more the model will prioritize the explanations during training.
@@ -147,7 +149,7 @@ NORMALIZE_EMBEDDING: bool = True
 #       This string literal determines the strategy which is used to aggregate the edge attention logits over 
 #       the various message passing layers in the graph encoder part of the network. This may be one of the 
 #       following values: 'sum', 'max', 'min'.
-ATTENTION_AGGREGATION: str = 'sum'
+ATTENTION_AGGREGATION: str = 'min'
 # :param CONTRASTIVE_FACTOR:
 #       This is the factor of the contrastive representation learning loss of the network. If this value is 0 
 #       the contrastive repr. learning is completely disabled (increases computational efficiency). The higher 
@@ -220,9 +222,10 @@ EPOCHS: int = 200
 LEARNING_RATE: float = 1e-3
 
 
-WANDB_PROJECT = 'megan'
+WANDB_PROJECT = None
 
 __DEBUG__ = True
+__TESTING__ = True
 
 experiment = Experiment(
     base_path=folder_path(__file__),
@@ -484,7 +487,7 @@ def validate_model(e: Experiment,
     graphs = [data['metadata']['graph'] for data in dataset.values()]
     infos = model.forward_graphs(graphs)
     
-    out_pred = [info['graph_output'] for info in infos]
+    out_pred = np.array([info['graph_output'] for info in infos])
     out_true = np.array([graph['graph_labels'] for graph in graphs])
     
     labels_pred = [np.argmax(out) for out in out_pred]
@@ -501,7 +504,7 @@ def validate_model(e: Experiment,
     model.train()
     model.to(device)
     
-    return result
+    return result, out_true, out_pred
 
 
 
@@ -509,6 +512,10 @@ def validate_model(e: Experiment,
 def experiment(e: Experiment):
     
     e.log('starting experiment...')
+    
+    if e.__TESTING__:
+        e.log('experiment in testing mode...')
+        e.EPOCHS = 3
     
     # ~ loading the test dataset
     # For a chunked dataset, the test set is saved separately from the training set. The test set is saved in the format 
@@ -558,7 +565,15 @@ def experiment(e: Experiment):
     
     e.log('constructing chunked dataset...')
     train_path = os.path.join(CHUNKED_DATASET_PATH, 'train')
-    dataset = MultiChunkedDataset(path=train_path, num_chunks=3)
+    
+    # For testing we construct the training dataset from the test set that we've already 
+    # loaded as that will most likely be the solution which requires the least amount 
+    # of *additional* time
+    if e.__TESTING__:
+        dataset = GraphDataset(index_data_map)
+    else:
+        dataset = MultiChunkedDataset(path=train_path, num_chunks=3)
+    
     train_loader = DataLoader(dataset, batch_size=e.BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(data_list, batch_size=e.BATCH_SIZE, shuffle=False)
     
@@ -574,10 +589,18 @@ def experiment(e: Experiment):
             
         def on_train_epoch_end(self, trainer, module):
             
-            e.track('loss_pred', trainer.callback_metrics['loss_pred'])
+            # ~ tracking training variables
+            # First of all we are going to track the training metrics, which includes all the different kinds
+            # of losses that the MEGAN model is using during the training process.
+            e.track('loss_prediction', float(trainer.callback_metrics['loss_pred']))
+            e.track('loss_explanation', float(trainer.callback_metrics['loss_expl']))
+            e.track('loss_sparsity', float(trainer.callback_metrics['loss_spar']))
+            e.track('loss_fidelity', float(trainer.callback_metrics['loss_fid']))
             
+            # ~ validation
+            # After each training epoch we want to validate the model on the validation set. This is done by
             e.log('validating model...')
-            result = e.apply_hook(
+            result, out_true, out_pred = e.apply_hook(
                 'validate_model',
                 model=model,
                 dataset=dataset_val,
@@ -597,8 +620,24 @@ def experiment(e: Experiment):
                 e.log(' * new best model found!')
                 model.save(self.model_path)
                 e.commit_json(self.result_path, result)
+                
+            # ~ tracking visual artifacts
+            # In addition to the numeric metrics we also want to track the evolution of the 
+            # models behavior visually by including for example a confusion matrix, the AUROC curve 
+            # and some example explanations. These will hopefully be useful for debugging.
+            fig, ax = plt.subplots(figsize=(8, 8))
+            plot_roc_curve(ax, out_true[:, 1], out_pred[:, 1])
+            e.track('roc_auc_curve', fig)
+            
+            fig, ax = plt.subplots(figsize=(8, 8))
+            labels_true = np.argmax(out_true, axis=-1)
+            labels_pred = np.argmax(out_pred, axis=-1)
+            plot_confusion_matrix(ax, labels_true, labels_pred, target_names=list(e.TARGET_NAMES.values()))
+            e.track('val_confusion_matrix', fig)
     
     e.log('constructing the model...')
+    e.log(f' * units: {e.UNITS}')
+    e.log(f' * hidden units: {e.HIDDEN_UNITS}')
     e.log(f' * label smoothing: {e.LABEL_SMOOTHING}')
     e.log(f' * class weights: {e.CLASS_WEIGTHS}')
     e.log(f' * final dropout rate: {e.FINAL_DROPOUT_RATE}')

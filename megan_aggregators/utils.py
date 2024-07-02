@@ -18,12 +18,14 @@ import jinja2 as j2
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow.keras as ks
+import seaborn as sns
 from weasyprint import HTML, CSS
 from dimorphite_dl import DimorphiteDL
 from torch.utils.data import Dataset
 from scipy.special import softmax
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
+from sklearn.metrics import confusion_matrix
 from visual_graph_datasets.util import dynamic_import
 from visual_graph_datasets.data import load_visual_graph_element
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
@@ -37,6 +39,7 @@ from graph_attention_student.keras import CUSTOM_OBJECTS
 from graph_attention_student.training import EpochCounterCallback
 from graph_attention_student.models import load_model as load_model_raw
 from graph_attention_student.torch.megan import Megan
+from graph_attention_student.torch.data import data_from_graph
 
 
 PATH = pathlib.Path(__file__).parent.absolute()
@@ -225,6 +228,44 @@ def plot_roc_curve(ax: plt.Axes,
 
     return fpr, tpr
 
+
+def plot_confusion_matrix(ax: plt.Axes,
+                          labels_true: np.ndarray,
+                          labels_pred: np.ndarray,
+                          target_names: list[str],
+                          cmap: str = 'viridis'
+                          ):
+    """
+    Plots a confusion matrix basedo n the given ``labels_true`` and ``labels_pred`` arrays
+    onto the given matplolib Axes ``ax``. The target names are used to label the axes of the
+    confusion matrix.
+    
+    :param ax: The matplotlib Axes object on which to draw the confusion matrix
+    :param labels_true: The true integer labels
+    :param labels_pred: The predicted integer labels
+    :param target_names: A list of strings which are the class names for the labels.
+    
+    :returns: The confusion matrix as a numpy array
+    """
+    # This will create the confusion matrix which is needed for the visualization
+    cm = confusion_matrix(labels_true, labels_pred)
+
+    # seaborn creates a nice heatmap of the confusion matrix
+    ticklabels = target_names
+    sns.heatmap(
+        cm, 
+        ax=ax, 
+        annot=True, 
+        fmt='02d',
+        cmap=cmap,
+        xticklabels=ticklabels,
+        yticklabels=ticklabels,
+        linewidths=0,
+    )
+    
+    return cm
+        
+    
 
 
 def load_processing(processing_path: str = PROCESSING_PATH):
@@ -537,11 +578,26 @@ class ChunkedDataset(Dataset):
         return self.data[idx]
     
     
+class GraphDataset(Dataset):
+    
+    def __init__(self, index_data_map: dict):
+        self.index_data_map = index_data_map
+        self.keys = list(index_data_map.keys())
+    
+    def __len__(self):
+        return len(self.index_data_map)
+        
+    def __getitem__(self, idx: int):
+        key = self.keys[idx]
+        return data_from_graph(self.index_data_map[key]['metadata']['graph'])
+
+    
 class MultiChunkedDataset(Dataset):
     
     def __init__(self, 
                  path: str,
                  num_chunks: int = 1,
+                 num_elements: int = 1000,
                  ) -> None:
         
         # This is the thingy here

@@ -15,11 +15,18 @@ explanation.png
 megan_aggregators/experiments/results/*
 megan_aggregators/examples/results/*
 
+# experiments
+megan_aggregators/experiments/assets/*
+megan_aggregators/experiments/_*
+megan_aggregators/_experiments/*
+
 # cache
 tests/__pycache__/*
 megan_aggregators/__pycache__/*
 megan_aggregators/models/__pycache__/*
 megan_aggregators/data/__pycache__/*
+megan_aggregators/experiments/__pycache__/*
+megan_aggregators/assets/__pycache__/*
 
 # artifacts
 tests/artifacts/*
