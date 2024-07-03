@@ -664,6 +664,7 @@ def experiment(e: Experiment):
     e.log(f' * hidden units: {e.HIDDEN_UNITS}')
     e.log(f' * label smoothing: {e.LABEL_SMOOTHING}')
     e.log(f' * class weights: {e.CLASS_WEIGTHS}')
+    e.log(f' * encoder dropout rate: {e.ENCODER_DROPOUT_RATE}')
     e.log(f' * final dropout rate: {e.FINAL_DROPOUT_RATE}')
     e.log(f' * output norm: {e.OUTPUT_NORM}')
     e.log(f' * sparsity factor: {e.SPARSITY_FACTOR}')
@@ -678,6 +679,7 @@ def experiment(e: Experiment):
         # enabled. The explanation co-training works differently for regression and classification tasks
         projection_units=e.PROJECTION_UNITS,
         importance_mode=e.DATASET_TYPE,
+        importance_target='node',
         final_units=e.FINAL_UNITS,
         num_channels=e.NUM_CHANNELS,
         importance_factor=e.IMPORTANCE_FACTOR,

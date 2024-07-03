@@ -16,6 +16,7 @@ megan_aggregators/experiments/results/*
 megan_aggregators/examples/results/*
 
 # experiments
+megan_aggregators/scripts/*
 megan_aggregators/experiments/assets/*
 megan_aggregators/experiments/_*
 megan_aggregators/_experiments/*
