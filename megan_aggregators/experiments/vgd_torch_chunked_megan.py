@@ -568,7 +568,7 @@ def experiment(e: Experiment):
     if e.__TESTING__:
         dataset = GraphDataset(index_data_map)
     else:
-        dataset = MultiChunkedDataset(path=train_path, num_chunks=3)
+        dataset = MultiChunkedDataset(path=train_path, num_chunks=7)
     
     train_loader = DataLoader(dataset, batch_size=e.BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(data_list, batch_size=e.BATCH_SIZE, shuffle=False)
@@ -675,6 +675,7 @@ def experiment(e: Experiment):
         units=e.UNITS,
         hidden_units=e.HIDDEN_UNITS,
         importance_units=e.IMPORTANCE_UNITS,
+        layer_version='v2',
         # only if this is a not-None value, the explanation co-training of the model is actually
         # enabled. The explanation co-training works differently for regression and classification tasks
         projection_units=e.PROJECTION_UNITS,

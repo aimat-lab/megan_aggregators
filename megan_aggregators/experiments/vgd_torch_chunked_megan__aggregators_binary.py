@@ -13,7 +13,7 @@ from megan_aggregators.utils import EXPERIMENTS_PATH
 #       This parameter is supposed to be a string path to the folder that contains the chunked version of the dataset.
 #       This folder should contain two subfolders "train" and "test" which in turn contain the chunked version of the
 #       training and test set in visual graph dataset format respectively.
-CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_new')
+CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_binary')
 # :param DATASET_TYPE:
 #       This is the parameter that determines the type of the dataset. It may be either "classification" or "regression".
 DATASET_TYPE: str = 'classification'
@@ -54,8 +54,8 @@ CHANNEL_INFOS: dict = {
 #       This list determines the layer structure of the model's graph encoder part. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
 #       in that layer of the encoder network.
-UNITS: t.List[int] = [64, 64, 64]
-HIDDEN_UNITS = 64
+UNITS: t.List[int] = [128, 128, 128]
+HIDDEN_UNITS = 128
 # :param IMPORTANCE_UNITS:
 #       This list determines the layer structure of the importance MLP which determines the node importance 
 #       weights from the node embeddings of the graph. 
@@ -66,7 +66,7 @@ IMPORTANCE_UNITS: t.List[int] = []
 #       This list determines the layer structure of the MLP's that act as the channel-specific projections.
 #       Each element in this list represents one layer where the integer value determines the number of hidden
 #       units in that layer.
-PROJECTION_UNITS: t.List[int] = [64, 128, 256]
+PROJECTION_UNITS: t.List[int] = [128, 256]
 # :param FINAL_UNITS:
 #       This list determines the layer structure of the model's final prediction MLP. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
@@ -82,12 +82,12 @@ IMPORTANCE_FACTOR: float = 1.0
 #       This parameter more or less controls how expansive the explanations are - how much of the graph they
 #       tend to cover. Higher values tend to lead to more expansive explanations while lower values tend to 
 #       lead to sparser explanations. Typical value range 0.5 - 1.5
-IMPORTANCE_OFFSET: float = 1.0
+IMPORTANCE_OFFSET: float = 0.4
 # :param SPARSITY_FACTOR:
 #       This is the coefficient that is used to scale the explanation sparsity loss during training.
 #       The higher this value the more explanation sparsity (less and more discrete explanation masks)
 #       is promoted.
-SPARSITY_FACTOR: float = 1.0
+SPARSITY_FACTOR: float = 0.1
 # :param FIDELITY_FACTOR:
 #       This parameter controls the coefficient of the explanation fidelity loss during training. The higher
 #       this value, the more the model will be trained to create explanations that actually influence the
@@ -164,7 +164,7 @@ CLASS_WEIGTHS: list[float] = [1.0, 1.0]
 #       This float value determines the dropout rate that is being applied to the node embedding vector after 
 #       each layer of the message passing part of the network. This can be used to regularize the model and
 #       prevent overfitting.
-ENCODER_DROPOUT_RATE: float = 0.0
+ENCODER_DROPOUT_RATE: float = 0.2
 # :param FINAL_DROPOUT_RATE:
 #       This float value determines the dropout rate that is being applied to the final prediction vector of the
 #       model. This can be used to regularize the model and prevent overfitting.
@@ -182,15 +182,17 @@ OUTPUT_NORM: t.Optional[float] = None
 
 # :param BATCH_SIZE:
 #       The number of elements to be processed in one batch during the training process.
-BATCH_SIZE: int = 200
+BATCH_SIZE: int = 100
 # :param EPOCHS:
 #       The number of epochs to train the model for.
-EPOCHS: int = int(50 * 1.0)
+EPOCHS: int = 25
 # :param LEARNING_RATE:
 #       The learning rate for the model training process.
 LEARNING_RATE: float = 1e-3
 
-__TESTING__ = True
+__TESTING__ = False
+
+WANDB_PROJECT = 'megan_aggregators'
 
 experiment = Experiment.extend(
     'vgd_torch_chunked_megan.py',

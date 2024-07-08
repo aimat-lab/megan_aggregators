@@ -2,6 +2,7 @@ import os
 import csv
 import time
 import random
+import math
 import datetime
 import queue
 import multiprocessing
@@ -26,7 +27,8 @@ from megan_aggregators.data import default, ext_hook
 
 # == SOURCE PARAMETERS == 
 
-SOURCE_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_new.csv')
+#SOURCE_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_new.csv')
+SOURCE_PATH = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_binary.csv')
 PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
 
 # == PROCESSING PARAMETERS ==
@@ -127,6 +129,7 @@ def save_chunk(e: Experiment,
 def create_test_set(e: Experiment,
                     dataset: list[dict],
                     file_name: str = 'dataset_test',
+                    protonate: bool = False,
                     ) -> None:
     
     target_indices_map: dict[int, list] = defaultdict(list)
@@ -153,16 +156,20 @@ def create_test_set(e: Experiment,
     dataset_test: dict[int, dict] = {}
     for index in test_indices:
         data = dataset[index]
-        smiles_variants = dl.protonate(data['smiles'])[0:1]
-        for smiles_protonated in smiles_variants:
-            dataset_test[index] = {
-                'index': index,
-                'smiles': smiles_protonated,
-                'smiles_base': data['smiles'],
-                'non-aggregator': data['non-aggregator'],
-                'aggregator': data['aggregator'],
-            }
+        smiles = data['smiles']
+        if protonate:
+            smiles = dl.protonate(data['smiles'])[0:1]
             
+        dataset_test[index] = {
+            'index': index,
+            'smiles': smiles,
+            'smiles_base': data['smiles'],
+            'non-aggregator': data['non-aggregator'],
+            'aggregator': data['aggregator'],
+        }
+            
+        # We need to delete that element from the base dataset then to avoid leakage of test time 
+        # information into the test dataset.
         del dataset[index]
             
     # ~ saving as csv
@@ -242,9 +249,12 @@ def experiment(e: Experiment):
     # ~ data loading
     
     e.log('loading data...')
+    dataset = {}
     with open(SOURCE_PATH) as file:
         reader = csv.DictReader(file)
-        dataset: dict[int, dict] = dict(enumerate(reader))
+        for index, data in enumerate(reader):
+            data['index'] = index
+            dataset[index] = data
    
     if e.__TESTING__:
         e.log('testing mode - scaling down...')
@@ -333,10 +343,10 @@ def experiment(e: Experiment):
         
     # Now we can calculate the necessary oversampling factor like this:
     oversampling_factor = len(target_indices_map[0]) / len(target_indices_map[1])
-    e.log(f'oversampling factor: {oversampling_factor}')
+    e.log(f'oversampling factor: {oversampling_factor} (0: {len(target_indices_map[0])} / 1: {len(target_indices_map[1])})')
         
     dataset_oversampled: dict[int, dict] = {}
-    for c, index in enumerate(target_indices_map[0] + random.choices(target_indices_map[1], k=int(oversampling_factor * len(target_indices_map[1])))):
+    for c, index in enumerate(target_indices_map[0] + target_indices_map[1] * math.floor(oversampling_factor)):
         dataset_oversampled[c] = dataset_protonated[index]
         
     e.log(f'ovesampled dataset has {len(dataset_oversampled)} elements...')
@@ -408,6 +418,8 @@ def experiment(e: Experiment):
     for worker in workers:
         input_queue.put(None)
         input_queue.put(None)
+        worker.terminate()
+        worker.join()
         
     e.log('done.')
         

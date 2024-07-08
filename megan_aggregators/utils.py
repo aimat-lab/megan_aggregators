@@ -642,13 +642,14 @@ class MultiChunkedDataset(Dataset):
             self.data += torch.load(path)
         
     def __len__(self):
-        #return 50_000
         return int(len(self.data) * 0.98)
         
     def __getitem__(self, idx: int):
         
         if self.counter >= len(self):
-            #self.sample_chunks()
+            if len(self.file_paths) > self.num_chunks:
+                print('sampling new chunks...')
+                self.sample_chunks()
             self.counter = 0
             
         self.counter += 1
