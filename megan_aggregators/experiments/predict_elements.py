@@ -12,6 +12,7 @@ from graph_attention_student.visualization import truncate_colormap
 from scipy.special import softmax
 from pycomex.functional.experiment import Experiment
 from pycomex.utils import folder_path, file_namespace
+from visual_graph_datasets.util import dynamic_import
 from visual_graph_datasets.processing.base import ProcessingBase
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
 from visual_graph_datasets.visualization.importances import create_combined_importances_pdf
@@ -19,12 +20,22 @@ from graph_attention_student.torch.megan import Megan
 
 from megan_aggregators.utils import load_processing
 from megan_aggregators.utils import get_protonations
+from megan_aggregators.utils import EXPERIMENTS_PATH
 from megan_aggregators.torch import load_model
 
 # == INPUT PARAMETERS ==
 # These parameters define the input of the experiment. This mainly includes the elements for which the 
 # actual predictions should be made.
 
+# :param PROCESSING_PATH:
+#       The path to the processing module that is to be used for the counterfactual generation. This
+#       has to be an absolute string path to an existing processing module that is supposed to be used
+#       for the processing of the molecules.
+PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
+# :param MODEL_PATH:
+#       The path to the model that is to be used for the counterfactual generation. This has to be an
+#       absolute string path to an existing checkpoint file that represents a stored model.
+MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model.ckpt')
 # :param ELEMENTS:
 #       This list defines the elements for which the model predictions should be generated. THis is a list of 
 #       dictionaries where each dictionary contains the information about one element. This dictionary may contain 
@@ -60,8 +71,8 @@ PREDICTION_TEMPERATURE: float = 10
 #       appear in the model. The values are matplotlib color maps which will be used to color the explanation
 #       masks in the visualization.
 CHANNEL_COLORS_MAP: dict[int, mcolors.Colormap] = {
-    0: mcolors.LinearSegmentedColormap.from_list('red', ['white', '#FF7B2F']),
-    1: mcolors.LinearSegmentedColormap.from_list('green', ['white', '#3EFFAF']),
+    1: mcolors.LinearSegmentedColormap.from_list('red', ['white', '#FF7B2F']),
+    0: mcolors.LinearSegmentedColormap.from_list('green', ['white', '#3EFFAF']),
 }
 # :param CHANNEL_INFOS:
 #       This dictionary structure can be used to define the information about the different explanation channels.
@@ -71,10 +82,10 @@ CHANNEL_COLORS_MAP: dict[int, mcolors.Colormap] = {
 #       channel which will be displayed in the legend.
 CHANNEL_INFOS: dict[str, t.Any] = {
     0: {
-        'name': 'Aggregator',
+        'name': 'Non-Aggregator',
     },
     1: {
-        'name': 'Non-Aggregator',
+        'name': 'Aggregator',
     }
 }
 # :param IMPORTANCE_THRESHOLD:
@@ -104,7 +115,7 @@ def load_model_from_disk(e: Experiment) -> Megan:
     
     :returns: Megan model instance
     """
-    model = load_model()
+    model = Megan.load(e.MODEL_PATH)
     return model
 
 
@@ -189,9 +200,9 @@ def process_element(e: Experiment,
     data = {
         'name': element['name'] if 'name' in element else '',
         'smiles': element['smiles'],
-        'aggregator': round(out[0], 5),
-        'non_aggregator': round(out[1], 5),
-        'label': 'aggregator' if label == 0 else 'non-aggregator',
+        'aggregator': round(out[1], 5),
+        'non_aggregator': round(out[0], 5),
+        'label': 'aggregator' if label == 1 else 'non-aggregator',
         'confidence': round(out[label], 5),
     }
     
@@ -218,7 +229,7 @@ def evaluate(e: Experiment,
     e.log('plotting confidence distribution...')
     # This is a list that contains the likelihood values of the model to predict the "non-aggregator"
     # class which are values between [0, 1]
-    likelihoods: list[float] = [softmax(info['graph_output'])[0] for info in infos]
+    likelihoods: list[float] = [softmax(info['graph_output'])[1] for info in infos]
     fig, ax = plt.subplots(
         ncols=1,
         nrows=1,
@@ -248,7 +259,8 @@ def experiment(e: Experiment):
     e.log(f'loaded model of class "{model.__class__.__name__}"')
     
     e.log(f'starting to load processing...')
-    processing: MoleculeProcessing = load_processing()
+    module = dynamic_import(e.PROCESSING_PATH)
+    processing: MoleculeProcessing = module.processing
     e.log(f'loaded processing of class {processing.__class__.__name__}')
     
     elements = e.apply_hook('load_elements')
@@ -330,7 +342,7 @@ def experiment(e: Experiment):
     for element, graph in zip(elements, graphs):
         name = element['name'] if 'name' in element else ''
         out = np.argmax(graph['graph_prediction'])
-        pred = 'aggregator' if out == 0 else 'non-aggregator'
+        pred = 'aggregator' if out == 1 else 'non-aggregator'
         
         label = (
             f'{name} - {element["smiles"]}\n'

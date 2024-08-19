@@ -4,7 +4,6 @@ import pytest
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import tensorflow.keras as ks
 
 from visual_graph_datasets.data import load_visual_graph_element
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
@@ -16,10 +15,52 @@ from megan_aggregators.utils import plot_roc_curve
 from megan_aggregators.utils import visualize_explanations
 from megan_aggregators.utils import load_processing
 from megan_aggregators.utils import create_report
+from megan_aggregators.utils import plot_calibration_curve
+from megan_aggregators.utils import create_confidence_histograms
 
 from .util import ASSETS_PATH, ARTIFACTS_PATH
 
 mpl.use('Agg')
+
+
+def test_create_confidence_histograms():
+    """
+    03.08.24: Given the true labels and the predicted probabilities, the ``create_confidence_histograms``
+    function should create several histogram plots that show the confidence distribution of the model
+    for each class.
+    """
+    y_true = np.random.randint(2, size=(100, 2))
+    y_pred = np.random.uniform(0, 1, size=(100, 2))
+
+    fig = create_confidence_histograms(
+        y_true=y_true,
+        y_pred=y_pred,
+    )
+    fig_path = os.path.join(ARTIFACTS_PATH, 'test_create_confidence_histograms.pdf')
+    fig.savefig(fig_path)
+    assert os.path.exists(fig_path)
+    
+
+def test_plot_calibration_curve():
+    """
+    03.08.24: Given the true labels and the predicted probabilities, the ``plot_calibration_curve`` function
+    should create a calibration curve plot that shows the relationship between the predicted probabilities
+    and the true labels.
+    """
+    y_true = np.random.randint(2, size=(100, ))
+    y_pred = np.random.uniform(0, 1, size=(100, ))
+    
+    fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(6, 6))
+    ax.set_title('Calibration Curve')
+    plot_calibration_curve(
+        ax=ax,
+        y_true=y_true,
+        y_pred=y_pred,
+    )
+    
+    fig_path = os.path.join(ARTIFACTS_PATH, 'test_plot_calibration_curve.pdf')
+    fig.savefig(fig_path)
+    assert os.path.exists(fig_path)
 
 
 def test_create_report():
@@ -82,7 +123,6 @@ def test_plot_roc_curve_basically_works():
 
     path = os.path.join(ARTIFACTS_PATH, 'roc_curve.pdf')
     fig.savefig(path)
-    
     
 @pytest.mark.parametrize(
     "num_channels",

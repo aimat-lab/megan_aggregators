@@ -1,4 +1,5 @@
 import os
+import csv
 import random
 import typing as t
 
@@ -8,6 +9,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from imageio.v2 import imread
+from scipy.special import softmax
 from sklearn.metrics import r2_score
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
@@ -17,6 +19,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve
 from sklearn.metrics import average_precision_score
+from sklearn.calibration import calibration_curve
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 from matplotlib.backends.backend_pdf import PdfPages
@@ -38,6 +41,8 @@ from megan_aggregators.utils import ChunkedDataset, MultiChunkedDataset, GraphDa
 from megan_aggregators.utils import EXPERIMENTS_PATH
 from megan_aggregators.utils import plot_roc_curve
 from megan_aggregators.utils import plot_confusion_matrix
+from megan_aggregators.utils import plot_calibration_curve
+from megan_aggregators.utils import create_confidence_histograms
 
 
 # == DATASET PARAMETERS ==
@@ -222,7 +227,15 @@ EPOCHS: int = 200
 # :param LEARNING_RATE:
 #       The learning rate for the model training process.
 LEARNING_RATE: float = 1e-3
-
+# :param USE_BEST:
+#       This flag controls whether or not the best model (according to the validation performance) should 
+#       be used as the final model in the end or not. If this is set to False, the model at the end of the 
+#       training process will be used.
+USE_BEST: bool = True
+# :param DO_VALIDATION:
+#       This flag controls whether or not the model should be evaluated on the validation set during the training
+#       process. If this is set to False, the model will not be evaluated on the validation set.
+DO_VALIDATION: bool = True
 
 __DEBUG__ = True
 __TESTING__ = True
@@ -275,14 +288,16 @@ def evaluate_model(e: Experiment,
     # as all the predictions will be saved in the experiment storage anyways, but having it directly in a CSV file 
     # makes it easier to communicate / share the results.
     e.log('exporting test set predictions as CSV...')
-    metadatas = []
-    for index, graph, out in zip(test_indices, graphs_test, out_pred):
-        metadata = index_data_map[index]['metadata']
-        metadata['graph']['graph_output'] = out
-        metadatas.append(metadata)
-
-    csv_path = os.path.join(e.path, 'test.csv')
-    #export_metadatas_csv(metadatas, csv_path)
+    infos_test = model.forward_graphs(graphs_test)
+    
+    with open(os.path.join(e.path, 'test.csv'), 'w') as file:
+        writer = csv.DictWriter(file, fieldnames=['smiles', 'true', 'pred'])
+        for index, info, graph in zip(test_indices, infos_test, graphs_test):
+            writer.writerow({
+                'smiles': index_data_map[index]['metadata']['smiles'],
+                'true': graph['graph_labels'],
+                'pred': info['graph_output'],
+            })
     
     # ~ task specific metrics
     # In this section we generate the performance metrics and artifacts for models depending on the specific 
@@ -345,6 +360,27 @@ def evaluate_model(e: Experiment,
         plot_confusion_matrix(ax, labels_true, labels_pred, target_names=list(e.TARGET_NAMES.values()))
         e.commit_fig('confusion_matrix.png', fig)
         
+        # ~ calibration curve
+        e.log('plotting calibration curve...')
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+        ax.set_title('Calibration Curve')
+        prob_true, prob_pred = plot_calibration_curve(
+            ax=ax,
+            y_true=out_true[:, 1],
+            y_pred=softmax(out_pred, axis=-1)[:, 1],
+        )
+        e.commit_fig('calibration_curve.png', fig)
+        
+        # ~ confidence histograms
+        e.log('plotting confidence histograms...')
+        fig = create_confidence_histograms(
+            y_true=out_true,
+            y_pred=softmax(out_pred, axis=-1),
+            n_bins=10,
+        )
+        e.commit_fig('confidence_histograms.png', fig)
+        
+        
     # ~ evaluating explanations
     e.log('evaluating Megan explanations...')
         
@@ -396,10 +432,6 @@ def validate_model(e: Experiment,
                    dataset: dict,
                    ) -> dict:
     
-    device = model.device
-    model.to('cpu')
-    model.eval()
-    
     result = {}
     
     graphs = [data['metadata']['graph'] for data in dataset.values()]
@@ -414,13 +446,12 @@ def validate_model(e: Experiment,
     acc_value = accuracy_score(labels_true, labels_pred)
     ap_value = average_precision_score(out_true, out_pred)
     auc_value = roc_auc_score(out_true, out_pred)
+    f1_value = f1_score(labels_true, labels_pred)
     
     result['accuracy'] = acc_value
     result['average_precision'] = ap_value
     result['roc_auc'] = auc_value 
-    
-    model.train()
-    model.to(device)
+    result['f1'] = f1_value
     
     return result, out_true, out_pred
 
@@ -491,7 +522,7 @@ def experiment(e: Experiment):
     
     if e.__TESTING__:
         e.log('experiment in testing mode...')
-        e.EPOCHS = 10
+        e.EPOCHS = 5
     
     # ~ loading the test dataset
     # For a chunked dataset, the test set is saved separately from the training set. The test set is saved in the format 
@@ -567,8 +598,9 @@ def experiment(e: Experiment):
     # of *additional* time
     if e.__TESTING__:
         dataset = GraphDataset(index_data_map)
+        
     else:
-        dataset = MultiChunkedDataset(path=train_path, num_chunks=7)
+        dataset = MultiChunkedDataset(path=train_path, num_chunks=-1)
     
     train_loader = DataLoader(dataset, batch_size=e.BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(data_list, batch_size=e.BATCH_SIZE, shuffle=False)
@@ -585,9 +617,11 @@ def experiment(e: Experiment):
             
         def on_train_epoch_end(self, trainer, module):
             
+            model = module
+            
             device = model.device
             model.to('cpu')
-            model.eval()
+            model = model.eval()
             
             # ~ tracking training variables
             # First of all we are going to track the training metrics, which includes all the different kinds
@@ -597,50 +631,66 @@ def experiment(e: Experiment):
             e.track('loss_sparsity', float(trainer.callback_metrics['loss_spar']))
             e.track('loss_fidelity', float(trainer.callback_metrics['loss_fid']))
             
-            # ~ validation
-            # After each training epoch we want to validate the model on the validation set. This is done by
-            e.log('validating model...')
-            result, out_true, out_pred = e.apply_hook(
-                'validate_model',
-                model=model,
-                dataset=dataset_val,
-            )
-            e['validation_history'].append(result)
-            e.track_many({f'val_{key}': value for key, value in result.items()})
-            e.log(f'validation'
-                  f' - accuracy: {result["accuracy"]:.2f}' 
-                  f' - average precision: {result["average_precision"]:.2f}'
-                  f' - auc: {result["roc_auc"]:.2f}')
-
-            # Then we want to compare the validation performance of the model with the previous 
-            # best model performance and if the new model is better, we will save it to the disk
-            # replacing the previous best model.
-            if result['accuracy'] > e['validation_best']:
-                e['validation_best'] = result['accuracy']
-                e.log(' * new best model found!')
-                model.save(self.model_path)
-                e.commit_json(self.result_path, result)
+            if e.DO_VALIDATION:
                 
-            # ~ tracking visual artifacts
-            # In addition to the numeric metrics we also want to track the evolution of the 
-            # models behavior visually by including for example a confusion matrix, the AUROC curve 
-            # and some example explanations. These will hopefully be useful for debugging.
-            fig, ax = plt.subplots(figsize=(8, 8))
-            plot_roc_curve(ax, out_true[:, 1], out_pred[:, 1])
-            e.track('val_roc_curve', fig)
-            
-            fig, ax = plt.subplots(figsize=(8, 8))
-            labels_true = np.argmax(out_true, axis=-1)
-            labels_pred = np.argmax(out_pred, axis=-1)
-            plot_confusion_matrix(ax, labels_true, labels_pred, target_names=list(e.TARGET_NAMES.values()))
-            e.track('val_confusion_matrix', fig)
-            
-            fig = e.apply_hook(
-                'plot_example_explanations',
-                model=model,
-                dataset=dict(list(dataset_val.items())[:4]),
-            )
-            e.track('val_example_explanations', fig)
+                # ~ validation
+                # After each training epoch we want to validate the model on the validation set. This is done by
+                e.log(f'validating model (training: {model.training})...')
+                result, out_true, out_pred = e.apply_hook(
+                    'validate_model',
+                    model=model,
+                    dataset=dataset_val,
+                )
+                e['validation_history'].append(result)
+                e.track_many({f'val_{key}': value for key, value in result.items()})
+                e.log(f'validation'
+                      f' - accuracy: {result["accuracy"]:.2f}' 
+                      f' - average precision: {result["average_precision"]:.2f}'
+                      f' - auc: {result["roc_auc"]:.2f}'
+                      f' - f1: {result["f1"]:.2f}')
+
+                # Then we want to compare the validation performance of the model with the previous 
+                # best model performance and if the new model is better, we will save it to the disk
+                # replacing the previous best model.
+                if result['accuracy'] > e['validation_best']:
+                    e['validation_best'] = result['accuracy']
+                    e.log(' * new best model found!')
+                    model.save(self.model_path)
+                    e.commit_json(self.result_path, result)
+                    
+                # ~ tracking visual artifacts
+                # In addition to the numeric metrics we also want to track the evolution of the 
+                # models behavior visually by including for example a confusion matrix, the AUROC curve 
+                # and some example explanations. These will hopefully be useful for debugging.
+                fig, ax = plt.subplots(figsize=(8, 8))
+                plot_roc_curve(ax, out_true[:, 1], out_pred[:, 1])
+                e.track('val_roc_curve', fig)
+                
+                fig, ax = plt.subplots(figsize=(8, 8))
+                labels_true = np.argmax(out_true, axis=-1)
+                labels_pred = np.argmax(out_pred, axis=-1)
+                plot_confusion_matrix(ax, labels_true, labels_pred, target_names=list(e.TARGET_NAMES.values()))
+                e.track('val_confusion_matrix', fig)
+                
+                # The calibration curve shows how well the predicted probabilities of the model are calibrated
+                # with the true probabilities. This is a very important metric for classification models as it
+                # shows how well the model is calibrated in terms of confidence corresponding to actual 
+                # empirical probabilities.
+                fig, ax = plt.subplots(figsize=(8, 8))
+                ax.set_title('Calibration Curve - Validation Set')
+                prob_true, prob_pred = plot_calibration_curve(
+                    ax=ax,
+                    y_true=out_true[:, 1],
+                    y_pred=softmax(out_pred, axis=-1)[:, 1],
+                )
+                e.track('val_calibration_curve', fig)
+                
+                fig = e.apply_hook(
+                    'plot_example_explanations',
+                    model=model,
+                    dataset=dict(list(dataset_val.items())[:4]),
+                )
+                e.track('val_example_explanations', fig)
 
             # ~ external dataset
             # We also want to determine the model performance for the external dataset. This is a small 
@@ -654,6 +704,10 @@ def experiment(e: Experiment):
                 dataset=dataset_ext,
             )
             e.track_many({f'ext_{key}': value for key, value in result.items()})
+            e.log(f'external'
+                  f' - accuracy: {result["accuracy"]:.2f}' 
+                  f' - average precision: {result["average_precision"]:.2f}'
+                  f' - auc: {result["roc_auc"]:.2f}')
             
             model.to(device)
             model.train()
@@ -680,7 +734,7 @@ def experiment(e: Experiment):
         # enabled. The explanation co-training works differently for regression and classification tasks
         projection_units=e.PROJECTION_UNITS,
         importance_mode=e.DATASET_TYPE,
-        importance_target='node',
+        importance_target='edge',
         final_units=e.FINAL_UNITS,
         num_channels=e.NUM_CHANNELS,
         importance_factor=e.IMPORTANCE_FACTOR,
@@ -717,16 +771,77 @@ def experiment(e: Experiment):
         train_dataloaders=train_loader,
         val_dataloaders=test_loader,
     )
+    
+    # Very important to set the model into evaluation mode as that will disable all dropout layers and 
+    # use the running statistics of the batch normalization layers instead of the batch statistics!
     model.eval()
     model.to('cpu')
 
     # ~ saving the model
     e.log('saving the model...')
     model_path = os.path.join(e.path, 'model.ckpt')
-    trainer.save_checkpoint(model_path)
+    model.save(model_path)
+    
+    # If this config flag is set, we actually want to load the best model that was found at any point 
+    # during the training (according to the performance on the validation dataset) instead of the final 
+    # model state at the end of the training process.
+    if e.USE_BEST:
+        e.log('loading the best model...')
+        model = Megan.load(os.path.join(e.path, 'model_best.ckpt'))
+    
+    # ~ evaluating on external dataset
+    e.log('validating model on external dataset...')
+    result, _, _ = e.apply_hook(
+        'validate_model',
+        model=model,
+        dataset=dataset_ext,
+    )
+    e.track_many({f'ext_{key}': value for key, value in result.items()})
+    e.log(f'external'
+            f' - accuracy: {result["accuracy"]:.2f}' 
+            f' - average precision: {result["average_precision"]:.2f}'
+            f' - auc: {result["roc_auc"]:.2f}')
+    
+    # ~ evaluating training performance
+    # by doing one forward pass for the training set we can evaluate the final training performance of the model.
+    # We want to get this metric to see how large the difference between the training and the test performance 
+    # is - to evaluate the degree of overfitting for example.
+    
+    e.log('evaluating the training performance of the model...')
+    outs_true = []
+    outs_pred = []
+    for i, data in enumerate(train_loader):
+        
+        if i > 1000:
+            break
+        
+        info = model.forward(data)
+        
+        out_pred = info['graph_output'].detach().numpy()
+        out_true = data.y.view(out_pred.shape).detach().numpy()
+        
+        outs_true.append(out_true)
+        outs_pred.append(out_pred)
+        
+    outs_true = np.concatenate(outs_true, axis=0)
+    outs_pred = np.concatenate(outs_pred, axis=0)
+        
+    labels_true = np.argmax(outs_true, axis=-1)
+    labels_pred = np.argmax(outs_pred, axis=-1)
+    
+    acc_value = accuracy_score(labels_true, labels_pred)
+    auc_value = roc_auc_score(
+        outs_true[:, 1],
+        softmax(outs_pred, axis=-1)[:, 1],
+    )
+    e[f'acc_train'] = acc_value
+    e[f'auc_train'] = auc_value
+    e.log(f' * final training accuracy: {acc_value*100:.2f}%')
+    e.log(f' * final training AUC: {auc_value:.2f}')
     
     # ~ evaluating the model
     # After the training process is done, we can evaluate the model on the test set.
+    
     e.log('evaluating the model...')
     e.apply_hook(
         'evaluate_model', 

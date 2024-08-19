@@ -2,12 +2,8 @@ import os
 import typing as t
 
 import numpy as np
-import tensorflow.keras as ks
 import visual_graph_datasets.typing as tv
 
-from graph_attention_student.models import CUSTOM_OBJECTS
-from graph_attention_student.models import load_model as _load_model
-from graph_attention_student.models.megan import Megan2 as _Megan2
 from graph_attention_student.torch.megan import Megan
 from megan_aggregators.utils import ASSETS_PATH
 from megan_aggregators.utils import MODEL_PATH
@@ -35,31 +31,6 @@ class PredictGraphsMixin:
     
     def explain_graphs(graphs: tv.GraphDict) -> t.List[tuple]:
         raise NotImplementedError()    
-
-    
-class Megan2(_Megan2, PredictGraphsMixin):
-    """
-    This is a wrapper around the original Megan model which implements the PredictGraphsMixin.
-    
-    In fact the original Megan model does already implement a ``predict_graphs`` method but the behavior of that 
-    method is not consistent with the behavior that is expected here. The original method returns not only the
-    actual prediction, but also the explanations all at once. To avoid confusion the PredictGraphMixin splits this 
-    behavior into two seperate methods ``predict_graphs`` and ``explain_graphs``.
-    """
-    def predict_graphs_raw(self, graphs: t.List[tv.GraphDict]):
-        return _Megan2.predict_graphs(self, graphs)
-
-    def predict_graphs(self, graphs: t.List[tv.GraphDict]):
-        outputs = self.predict_graphs_raw(graphs)
-        
-        predictions = [pred for pred, _, _ in outputs]
-        return predictions
-    
-    def explain_graphs(self, graphs: t.List[tv.GraphDict]):
-        outputs = self.predict_graphs_raw(graphs)
-        
-        explanations = [(ni, ei) for _, ni, ei in outputs]
-        return explanations
 
 
 class ModelEnsemble:
@@ -123,27 +94,6 @@ class ModelEnsemble:
             results.append((node_importances, edge_importances))
             
         return results
-                
-                
-                
-def _load_model(model_path: str = DEFAULT_MODEL_PATH) -> ks.models.Model:
-    """
-    DEPRECATED
-    
-    Loads the keras model from memory given its ``model_path`` absolute folder path. By default, this
-    function will load the default model which is shipped with this package.
-
-    :param model_path: The absolute path to the folder which contains the models persistent representation.
-
-    :returns: The MEGAN model which is saved at the given folder path
-    """
-    scope = {
-        **CUSTOM_OBJECTS,
-        'Megan2': Megan2,
-    }
-    
-    with ks.utils.custom_object_scope(scope):
-        return ks.models.load_model(model_path)
 
 
 def load_model(model_path: str = DEFAULT_MODEL_PATH) -> Megan:
@@ -154,16 +104,3 @@ def load_model(model_path: str = DEFAULT_MODEL_PATH) -> Megan:
     path = os.path.join(model_path, 'model.ckpt')
     model = Megan.load_from_checkpoint(path)
     return model
-
-
-def load_ensemble(model_paths: str = DEFAULT_ENSEMBLE_PATHS) -> t.Any:
-    """
-    Loads the keras
-    """
-    models = []
-    for path in model_paths:
-        model = _load_model(path)
-        models.append(model)
-        
-    ensemble = ModelEnsemble(models)
-    return ensemble

@@ -13,7 +13,7 @@ from megan_aggregators.utils import EXPERIMENTS_PATH
 #       This parameter is supposed to be a string path to the folder that contains the chunked version of the dataset.
 #       This folder should contain two subfolders "train" and "test" which in turn contain the chunked version of the
 #       training and test set in visual graph dataset format respectively.
-CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_binary')
+CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_combined')
 # :param DATASET_TYPE:
 #       This is the parameter that determines the type of the dataset. It may be either "classification" or "regression".
 DATASET_TYPE: str = 'classification'
@@ -54,7 +54,7 @@ CHANNEL_INFOS: dict = {
 #       This list determines the layer structure of the model's graph encoder part. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
 #       in that layer of the encoder network.
-UNITS: t.List[int] = [128, 128, 128]
+UNITS: t.List[int] = [64, 64, 64]
 HIDDEN_UNITS = 128
 # :param IMPORTANCE_UNITS:
 #       This list determines the layer structure of the importance MLP which determines the node importance 
@@ -66,14 +66,14 @@ IMPORTANCE_UNITS: t.List[int] = []
 #       This list determines the layer structure of the MLP's that act as the channel-specific projections.
 #       Each element in this list represents one layer where the integer value determines the number of hidden
 #       units in that layer.
-PROJECTION_UNITS: t.List[int] = [128, 256]
+PROJECTION_UNITS: t.List[int] = [64, 128, 256]
 # :param FINAL_UNITS:
 #       This list determines the layer structure of the model's final prediction MLP. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
 #       in that layer of the prediction network.
 #       Note that the last value of this list determines the output shape of the entire network and 
 #       therefore has to match the number of target values given in the dataset.
-FINAL_UNITS: t.List[int] = [2]
+FINAL_UNITS: t.List[int] = [64, 2]
 # :param IMPORTANCE_FACTOR:
 #       This is the coefficient that is used to scale the explanation co-training loss during training.
 #       Roughly, the higher this value, the more the model will prioritize the explanations during training.
@@ -82,7 +82,7 @@ IMPORTANCE_FACTOR: float = 1.0
 #       This parameter more or less controls how expansive the explanations are - how much of the graph they
 #       tend to cover. Higher values tend to lead to more expansive explanations while lower values tend to 
 #       lead to sparser explanations. Typical value range 0.5 - 1.5
-IMPORTANCE_OFFSET: float = 0.4
+IMPORTANCE_OFFSET: float = 0.75
 # :param SPARSITY_FACTOR:
 #       This is the coefficient that is used to scale the explanation sparsity loss during training.
 #       The higher this value the more explanation sparsity (less and more discrete explanation masks)
@@ -112,7 +112,7 @@ REGRESSION_MARGIN: t.Optional[float] = None
 #       This string literal determines the strategy which is used to aggregate the edge attention logits over 
 #       the various message passing layers in the graph encoder part of the network. This may be one of the 
 #       following values: 'sum', 'max', 'min'.
-ATTENTION_AGGREGATION: str = 'min'
+ATTENTION_AGGREGATION: str = 'max'
 # :param NORMALIZE_EMBEDDING:
 #       This boolean value determines whether the graph embeddings are normalized to a unit length or not.
 #       If this is true, the embedding of each individual explanation channel will be L2 normalized such that 
@@ -122,11 +122,11 @@ NORMALIZE_EMBEDDING: bool = True
 #       This is the factor of the contrastive representation learning loss of the network. If this value is 0 
 #       the contrastive repr. learning is completely disabled (increases computational efficiency). The higher 
 #       this value the more the contrastive learning will influence the network during training.
-CONTRASTIVE_FACTOR: float = 0.0
+CONTRASTIVE_FACTOR: float = 1.0
 # :param CONTRASTIVE_NOISE:
 #       This float value determines the noise level that is applied when generating the positive augmentations 
 #       during the contrastive learning process.
-CONTRASTIVE_NOISE: float = 0.05
+CONTRASTIVE_NOISE: float = 0.1
 # :param CONTRASTIVE_TEMP:
 #       This float value is a hyperparameter that controls the "temperature" of the contrastive learning loss.
 #       The higher this value, the more the contrastive learning will be smoothed out. The lower this value,
@@ -135,13 +135,13 @@ CONTRASTIVE_TEMP: float = 1.0
 # :param CONTRASTIVE_BETA:
 #       This is the float value from the paper about the hard negative mining called the concentration 
 #       parameter. It determines how much the contrastive loss is focused on the hardest negative samples.
-CONTRASTIVE_BETA: float = 0.1
+CONTRASTIVE_BETA: float = 1.0
 # :param CONTRASTIVE_TAU:
 #       This float value is a hyperparameters of the de-biasing improvement of the contrastive learning loss. 
 #       This value should be chosen as roughly the inverse of the number of expected concepts. So as an example 
 #       if it is expected that each explanation consists of roughly 10 distinct concepts, this should be chosen 
 #       as 1/10 = 0.1
-CONTRASTIVE_TAU: float = 0.1
+CONTRASTIVE_TAU: float = 0.01
 # :param PREDICTION_FACTOR:
 #       This is a float value that determines the factor by which the main prediction loss is being scaled 
 #       durign the model training. Changing this from 1.0 should usually not be necessary except for regression
@@ -164,7 +164,7 @@ CLASS_WEIGTHS: list[float] = [1.0, 1.0]
 #       This float value determines the dropout rate that is being applied to the node embedding vector after 
 #       each layer of the message passing part of the network. This can be used to regularize the model and
 #       prevent overfitting.
-ENCODER_DROPOUT_RATE: float = 0.2
+ENCODER_DROPOUT_RATE: float = 0.0
 # :param FINAL_DROPOUT_RATE:
 #       This float value determines the dropout rate that is being applied to the final prediction vector of the
 #       model. This can be used to regularize the model and prevent overfitting.
@@ -185,14 +185,15 @@ OUTPUT_NORM: t.Optional[float] = None
 BATCH_SIZE: int = 100
 # :param EPOCHS:
 #       The number of epochs to train the model for.
-EPOCHS: int = 25
+EPOCHS: int = 10
 # :param LEARNING_RATE:
 #       The learning rate for the model training process.
-LEARNING_RATE: float = 1e-3
+LEARNING_RATE: float = 1e-4
 
 __TESTING__ = False
 
 WANDB_PROJECT = 'megan_aggregators'
+WANDB_PROJECT = None
 
 experiment = Experiment.extend(
     'vgd_torch_chunked_megan.py',

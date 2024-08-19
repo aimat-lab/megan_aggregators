@@ -17,7 +17,6 @@ import torch
 import jinja2 as j2
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow.keras as ks
 import seaborn as sns
 from weasyprint import HTML, CSS
 from dimorphite_dl import DimorphiteDL
@@ -26,6 +25,7 @@ from scipy.special import softmax
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import confusion_matrix
+from sklearn.calibration import calibration_curve
 from visual_graph_datasets.util import dynamic_import
 from visual_graph_datasets.data import load_visual_graph_element
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
@@ -35,9 +35,6 @@ from visual_graph_datasets.visualization.importances import plot_edge_importance
 from vgd_counterfactuals.base import CounterfactualGenerator
 from vgd_counterfactuals.generate.molecules import get_neighborhood
 
-from graph_attention_student.keras import CUSTOM_OBJECTS
-from graph_attention_student.training import EpochCounterCallback
-from graph_attention_student.models import load_model as load_model_raw
 from graph_attention_student.torch.megan import Megan
 from graph_attention_student.torch.data import data_from_graph
 
@@ -265,8 +262,93 @@ def plot_confusion_matrix(ax: plt.Axes,
     )
     
     return cm
-        
+
+
+def plot_calibration_curve(ax: plt.Axes,
+                           y_true: np.ndarray,
+                           y_pred: np.ndarray,
+                           n_bins: int = 10,
+                           ) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Plots the calibration / reliability curve onto the given matplotlib Axes ``ax`` based on the true
+    binary labels ``y_true`` and the predicted probabilities ``y_pred``. The number of bins for the
+    calibration curve can be adjusted with the ``n_bins`` argument.
     
+    The reliability curve is a plot of the fraction of positives in the bins against the mean predicted
+    probability in each bin. A perfectly calibrated model would have the calibration curve as a straight
+    line from the bottom left to the top right corner. The calibration curve is a good way to visualize
+    how well the predicted probabilities of a model actually correspond to the true probabilities.
+    
+    :param ax: The matplotlib Axes object on which to draw the calibration curve
+    :param y_true: A np array of the binary true labels
+    :param y_pred: A np array of the corresponding predicted probabilities
+    :param n_bins: The number of bins to use for the calibration curve
+    
+    :returns: A tuple of two numpy arrays: (1) The true probabilities and (2) the predicted probabilities.
+    """
+    prob_true, prob_pred = calibration_curve(y_true, y_pred, n_bins=n_bins, strategy='uniform')
+    
+    ax.plot([0, 1], [0, 1], linestyle='--', color='black', alpha=0.2, label='calibrated')
+    ax.plot(prob_pred, prob_true, marker='o', color='purple', label='model')
+    ax.set_xlabel('Mean predicted probability')
+    ax.set_ylabel('Fraction of positives')
+    ax.legend()
+    
+    return prob_true, prob_pred
+
+
+def create_confidence_histograms(y_true: np.ndarray,
+                                 y_pred: np.ndarray,
+                                 n_bins: int = 20,
+                                 fig_size: int = 5,
+                                 color: str = 'lightgray',
+                                 ) -> None:
+    """
+    Based on the given true labels ``y_true`` and the predicted probabilities ``y_pred`` of a multi-class
+    classification problem, this function will create one histogram plot for each class, where the horizontal
+    axis represents the predicted probability and each histogram will show the distribution over all the 
+    elements with that corresponding true label.
+    
+    :param y_true: A numpy array of the true labels
+    :param y_pred: A numpy array of the predicted probabilities
+    :param n_bins: The number of bins to use for the histograms
+    :param fig_size: The size of the figure
+    :param color: The color of the histogram
+    
+    :returns: A matplotlib Figure instance containing the various histogram plots
+    """
+    num_classes = y_true.shape[1]
+    
+    fig, rows = plt.subplots(
+        ncols=num_classes,
+        nrows=1,
+        figsize=(num_classes * fig_size, fig_size),
+        squeeze=False,
+    )
+    
+    for class_index in range(num_classes):
+        
+        ax = rows[0][class_index]
+        
+        values_true = y_true[:, class_index]
+        values_pred = y_pred[:, class_index]
+        
+        values = values_pred[values_true == 1]
+
+        sns.histplot(
+            values, 
+            color=color, 
+            ax=ax, 
+            kde=True, 
+            bins=n_bins, 
+            line_kws={'color': 'black', 'linestyle': '--'},
+        )
+        ax.set_title(f'class {class_index}')
+        ax.set_xlim(0, 1)
+        ax.set_xlabel('predicted probability')
+        ax.set_ylabel('number of elements')
+    
+    return fig
 
 
 def load_processing(processing_path: str = PROCESSING_PATH):
@@ -458,31 +540,6 @@ def get_protonations(smiles: str,
     return dmph.protonate(smiles)
 
 
-class VariableSchedulerCallback(EpochCounterCallback):
-
-    def __init__(self,
-                 property_name: str,
-                 value_start: float,
-                 value_end: float,
-                 epoch_end: int,
-                 epoch_start: int = 0):
-        super(VariableSchedulerCallback, self).__init__()
-        self.property_name = property_name
-        self.epoch_start = epoch_start
-        self.epoch_end = epoch_end
-        self.value_start = value_start
-        self.value_end = value_end
-
-        self.step = (self.value_end - self.value_start) / (self.epoch_end - self.epoch_start)
-        self.value = self.value_start
-
-    def on_epoch_end(self, *args, **kwargs):
-        variable = getattr(self.model, self.property_name)
-        if self.epoch > self.epoch_start:
-            self.value = self.value_start + (self.epoch / self.epoch_end) * self.step
-            variable.assign(self.value)
-
-
 class ChunkedDataset(Dataset):
     """
     Implements a PyTorch Dataset which is able to load a pre-chunked dataset. These chunked datasets 
@@ -614,6 +671,11 @@ class MultiChunkedDataset(Dataset):
         for file in files:
             if file.endswith('.pt'):
                 self.file_paths.append(os.path.join(path, file))
+                
+        # We also want to support the special value "-1" for the case of just loading all the chunks 
+        # into memory at once - some systems may have enough memory to handle this.
+        if num_chunks == -1:
+            self.num_chunks = len(self.file_paths)
                 
         self.indices = list(range(len(self.file_paths)))
         

@@ -14,6 +14,7 @@ import torch
 import msgpack
 import numpy as np
 import matplotlib.pyplot as plt
+import rdkit.Chem as Chem
 from dimorphite_dl import DimorphiteDL
 
 from pycomex.functional.experiment import Experiment
@@ -27,19 +28,72 @@ from megan_aggregators.data import default, ext_hook
 
 # == SOURCE PARAMETERS == 
 
-#SOURCE_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_new.csv')
-SOURCE_PATH = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_binary.csv')
+# :param SOURCE_PATH:
+#       The path to the source CSV file that contains the SMILES strings and the corresponding
+#       target labels for the dataset that is to be processed into a visual graph dataset.
+SOURCE_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_new.csv')
+#SOURCE_PATH = os.path.join(EXPERIMENTS_PATH, 'assets', 'aggregators_combined.csv')
+# :param PROCESSING_PATH:
+#       The path to the processing module that is used to process the SMILES into molecular 
+#       graph representations that are then saved as visual graph datasets.
 PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
+# :param CLASS_0_KEY:
+#       The column name in the dataset CSV file which contains the target values for the 0 (inactive)
+#       class. 
+CLASS_0_KEY: str = 'non-aggregator'
+# :param CLASS_1_KEY:
+#       The column name in the dataset CSV file which contains the target values for the 1 (active)
+#       class.
+CLASS_1_KEY: str = 'aggregator'
+# :param DATASET_NAME:
+#       The name of the dataset that is being processed. This is used to create the folder structure
+#       for the dataset.
+DATASET_NAME: str = 'aggregators'
+
 
 # == PROCESSING PARAMETERS ==
 
-NUM_TEST: int = 2_000
+# :param NUM_TEST: 
+#       The number of elements to be sampled as the test set.
+NUM_TEST: int = 1_000
+# :param NUM_VAL:
+#       The number of elements to be sampled as the validation set.
+NUM_VAL: int = 200
+# :param USE_DIMORPHITE:
+#       Whether to use the dimorphite protonation for the molecules in the training dataset or not.
+#       This is used as an augmentation to increase the training dataset size.
+USE_DIMORPHITE: bool = True
+# :param MIN_PH:
+#       The minimum pH value used for the dimorphite protonation that is applied to every 
+#       molecule in the training dataset as an augmentation to increase the training size.
 MIN_PH: float = 6.4
+# :param MAX_PH:
+#       The maximum pH value used for the dimorphite protonation that is applied to every
+#       molecule in the training dataset as an augmentation to increase the training size.
 MAX_PH: float = 8.4
+# :param MAX_VARIANTS:
+#       The maximum number of protonation variants that are generated for each molecule in the
+#       training dataset.
 MAX_VARIANTS: int = 128
+# :param PKA_PRECISION:
+#       The precision of the pKa values that are used for the dimorphite protonation. This is
+#       used to determine the number of protonation variants that are generated for each molecule.
+PKA_PRECISION: float = 0.1
+# :param USE_COORDINATES:
+#       Whether to use the node coordinates in the graph dataset or not. If this is True RDKIT
+#       will be used to generate simple equilibrium conformations/geometries for each molecule.
+#       This will significantly increase the processing time.
 USE_COORDINATES: bool = True
+# :param CHUNK_SIZE:
+#       The number of elements that are included in one chunk of the training dataset. The training 
+#       dataset is directely exported as torch tensor files in the end. These are chunked to avoid 
+#       memory issues during the processing and training on systems with limited memory.
 CHUNK_SIZE: int = 250_000
+# :param IMAGE_WIDTH:
+#       The width of the image that is generated for each molecule in the visual graph dataset.
 IMAGE_WIDTH: int = 1000
+# :param IMAGE_HEIGHT:
+#       The height of the image that is generated for each molecule in the visual graph dataset.
 IMAGE_HEIGHT: int = 1000
 
 
@@ -59,12 +113,17 @@ class ProcessingWorker(multiprocessing.Process):
                  output_queue: multiprocessing.Queue,
                  processing_path: str,
                  use_coordinates: bool,
+                 class_0_key: str,
+                 class_1_key: str,
                  ):
         super(ProcessingWorker, self).__init__()
         
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.use_coordinates = use_coordinates
+        
+        self.class_0_key = class_0_key
+        self.class_1_key = class_1_key
         
         module = dynamic_import(processing_path)
         self.processing = module.processing
@@ -99,8 +158,8 @@ class ProcessingWorker(multiprocessing.Process):
                 continue
             
             graph_labels = np.array([
-                data['non-aggregator'],
-                data['aggregator'],
+                data[self.class_0_key],
+                data[self.class_1_key],
             ], dtype=float)
             graph['graph_labels'] = graph_labels
             
@@ -124,24 +183,43 @@ def save_chunk(e: Experiment,
     
     e.log(f'   done.')
     del data_list
+    
+    
+@experiment.hook('sample_test_indices', default=True, replace=False)
+def sample_test_indices(e: Experiment,
+                        dataset: list[dict],
+                        num_elements: int,
+                        ) -> list[int]:
+    
+    target_indices_map: dict[int, list] = defaultdict(list)
+    for index, data in dataset.items():
+        target = int(np.argmax([data[e.CLASS_0_KEY], data[e.CLASS_1_KEY]]))
+        target_indices_map[target].append(index)
+        
+    target_len_map: dict[int, int] = {k: len(v) for k, v in target_indices_map.items()}
+    e.log('target len map: ' + str(target_len_map))
+        
+    test_indices = [
+        *random.sample(target_indices_map[0], num_elements // 2),
+        *random.sample(target_indices_map[1], num_elements // 2),
+    ]
+    return test_indices
+    
 
 @experiment.hook('create_test_set', default=True, replace=False)
 def create_test_set(e: Experiment,
                     dataset: list[dict],
                     file_name: str = 'dataset_test',
+                    num_elements: int = 1_000,
                     protonate: bool = False,
                     ) -> None:
     
-    target_indices_map: dict[int, list] = defaultdict(list)
-    for index, data in dataset.items():
-        target = int(np.argmax([data['non-aggregator'], data['aggregator']]))
-        target_indices_map[target].append(index)
-        
-    test_indices = [
-        *random.sample(target_indices_map[0], NUM_TEST // 2),
-        *random.sample(target_indices_map[1], NUM_TEST // 2),
-    ]
-    e.log(f'sampled {len(test_indices)} test indices...')
+    e.log('sampling test indices...')
+    test_indices = e.apply_hook(
+        'sample_test_indices',
+        dataset=dataset,
+        num_elements=num_elements,
+    )
     
     # ~ protonation
     
@@ -150,7 +228,7 @@ def create_test_set(e: Experiment,
         min_ph=e.MIN_PH,
         max_ph=e.MAX_PH,
         #max_variants=1,
-        pka_precision=0.1,
+        pka_precision=e.PKA_PRECISION,
     )
     
     dataset_test: dict[int, dict] = {}
@@ -164,13 +242,14 @@ def create_test_set(e: Experiment,
             'index': index,
             'smiles': smiles,
             'smiles_base': data['smiles'],
-            'non-aggregator': data['non-aggregator'],
-            'aggregator': data['aggregator'],
+            e.CLASS_0_KEY: data[e.CLASS_0_KEY],
+            e.CLASS_1_KEY: data[e.CLASS_1_KEY],
         }
             
         # We need to delete that element from the base dataset then to avoid leakage of test time 
         # information into the test dataset.
-        del dataset[index]
+        if random.random() < 0.6:
+            del dataset[index]
             
     # ~ saving as csv
     e.log('saving test dataset as csv...')
@@ -190,7 +269,7 @@ def create_test_set(e: Experiment,
         chunk_size=10_000,
     )
     for index, data in dataset_test.items():
-        graph_labels = np.array([data['non-aggregator'], data['aggregator']], dtype=float)
+        graph_labels = np.array([data[e.CLASS_0_KEY], data[e.CLASS_1_KEY]], dtype=float)
         graph = processing.process(data['smiles'])
         graph['graph_labels'] = graph_labels
         
@@ -240,6 +319,8 @@ def experiment(e: Experiment):
             output_queue=output_queue,
             processing_path=e.PROCESSING_PATH,
             use_coordinates=e.USE_COORDINATES,
+            class_0_key=e.CLASS_0_KEY,
+            class_1_key=e.CLASS_1_KEY,
         )
         worker.start()
         workers.append(worker)
@@ -256,10 +337,16 @@ def experiment(e: Experiment):
             data['index'] = index
             dataset[index] = data
    
+    # To test this experiment we mainly have to reduce the runtime of all the processing steps
+    # which means that we reduce the number of test/val elements as well as the dataset size 
+    # in general through subsampling such that the entire code should be run much more quickly.
     if e.__TESTING__:
+        
         e.log('testing mode - scaling down...')
         
-        e.NUM_TEST = 200
+        e.NUM_TEST = 100
+        e.NUM_VAL = 100
+        
         e.CHUNK_SIZE = 10_000
         
         dataset_ = dict(random.sample(list(dataset.items()), 10_000))
@@ -267,22 +354,42 @@ def experiment(e: Experiment):
                 
     e.log(f'loaded {len(dataset)} elements...')
     
+    # ~ filtering data
+    
+    e.log('filtering data...')
+    
+    for index, data in dataset.items():
+        
+        if '.' in data['smiles']:
+            del dataset[index]
+            e.log(f' * removing element {index} due to disconnection - {data["smiles"]}')
+            
+        if not Chem.MolFromSmiles(data['smiles']):
+            del dataset[index]
+            e.log(f' * removing element {index} due to invalid SMILES - {data["smiles"]}')
+    
     # ~ determine test set
     # We want to sample the test set from the un-processed dataset because this spares us the hassle 
     # of having to clean up the processed dataset afterwards regarding all the base molecules that 
     # were used in the test set.
-    e.log('sampling test set...')
+    e.log(f'sampling test set with {e.NUM_TEST} elements...')
     dataset_test: dict[int, dict] = e.apply_hook(
         'create_test_set', 
         dataset=dataset,
         file_name='dataset_test',
+        num_elements=e.NUM_TEST,
     )
 
-    e.log('sampling validation set...')
+    # ~ determine validation set
+    # We also want to sample a validation set from the remaining dataset, for which we can use the same 
+    # function as we want the validation and test set to be essentially the same structure - just different 
+    # elements.
+    e.log(f'sampling validation set with {e.NUM_VAL} elements...')
     dataset_val: dict[int, dict] = e.apply_hook(
         'create_test_set', 
         dataset=dataset,
         file_name='dataset_val',
+        num_elements=e.NUM_VAL,
     )
     
     e.log(f'train elements: {len(dataset)} - test elements: {len(dataset_test)} - val elements: {len(dataset_val)}...')
@@ -290,39 +397,48 @@ def experiment(e: Experiment):
     # ~ protonation pre-processing
     
     e.log('protonating with dimorphite...')
-    dl = DimorphiteDL(
-        min_ph=e.MIN_PH,
-        max_ph=e.MAX_PH,
-        max_variants=e.MAX_VARIANTS,
-        pka_precision=0.1,
-    )
     
-    index = 0
-    dataset_protonated: dict[int, dict] = {}
-    for c, data in enumerate(dataset.values()):
-        smiles = data['smiles']
-        smiles_variants = dl.protonate(smiles)
-        num_variants = len(smiles_variants)
+    # 04.08.2021: Added the option to disable the protonation pre-processing.
+    if e.USE_DIMORPHITE:
         
-        for smiles_protonated in smiles_variants:
-            dataset_protonated[index] = {
-                'index': index,
-                'index_base': data['index'],
-                'smiles': smiles_protonated,
-                'smiles_base': smiles,
-                'num_variants': num_variants,
-                'non-aggregator': data['non-aggregator'],
-                'aggregator': data['aggregator'],
-            }
-            index += 1
+        dl = DimorphiteDL(
+            min_ph=e.MIN_PH,
+            max_ph=e.MAX_PH,
+            max_variants=e.MAX_VARIANTS,
+            pka_precision=e.PKA_PRECISION,
+        )
+        
+        index = 0
+        dataset_protonated: dict[int, dict] = {}
+        for c, data in enumerate(dataset.values()):
+            smiles = data['smiles']
+            smiles_variants = dl.protonate(smiles)
+            num_variants = len(smiles_variants)
             
-        if c % 10_000 == 0:
-            e.log(f' * {c}/{len(dataset)} processed')
+            for smiles_protonated in smiles_variants:
+                dataset_protonated[index] = {
+                    'index': index,
+                    'index_base': data['index'],
+                    'smiles': smiles_protonated,
+                    'smiles_base': smiles,
+                    'num_variants': num_variants,
+                    e.CLASS_0_KEY: data[e.CLASS_0_KEY],
+                    e.CLASS_1_KEY: data[e.CLASS_1_KEY],
+                }
+                index += 1
+                
+            if c % 10_000 == 0:
+                e.log(f' * {c}/{len(dataset)} processed')
+                
+    else:
+        
+        e.log('skipping protonation!')
+        dataset_protonated = dataset
             
     e.log(f'protonated dataset has {len(dataset_protonated)} elements...')
     
     e.log('saving protonated dataset CSV...')
-    dataset_protonated_path = os.path.join(e.path, 'aggregators_protonated.csv')
+    dataset_protonated_path = os.path.join(e.path, 'dataset_protonated.csv')
     with open(dataset_protonated_path, 'w') as file:
         writer = csv.DictWriter(file, fieldnames=next(iter(dataset_protonated.values())).keys())
         writer.writeheader()
@@ -335,10 +451,10 @@ def experiment(e: Experiment):
     e.log('oversampling minority labels...')
     # for that we are first going to construct this data structure whose keys are the target labels 
     # 0 (nonagg) / 1 (agg) and the values are lists with the corresponding indices in the dataset.
-    indices = list(range(len(dataset_protonated)))
+    indices = list(dataset_protonated.keys())
     target_indices_map: dict[int, list] = defaultdict(list)
     for index, data in dataset_protonated.items():
-        target = int(np.argmax([data['non-aggregator'], data['aggregator']]))
+        target = int(np.argmax([data[e.CLASS_0_KEY], data[e.CLASS_1_KEY]]))
         target_indices_map[target].append(index)
         
     # Now we can calculate the necessary oversampling factor like this:

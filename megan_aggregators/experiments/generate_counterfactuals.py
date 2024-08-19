@@ -20,6 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from pycomex.functional.experiment import Experiment
 from pycomex.utils import folder_path, file_namespace
 from visual_graph_datasets.data import load_visual_graph_element
+from visual_graph_datasets.util import dynamic_import
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
 from visual_graph_datasets.visualization.base import draw_image
 from visual_graph_datasets.visualization.importances import plot_edge_importances_background
@@ -30,7 +31,7 @@ from vgd_counterfactuals.generate.molecules import get_neighborhood
 
 from megan_aggregators.utils import load_processing
 from megan_aggregators.torch import load_model
-
+from megan_aggregators.utils import EXPERIMENTS_PATH
 
 mpl.use('TkAgg')
 np.set_printoptions(precision=2)
@@ -40,6 +41,15 @@ np.set_printoptions(precision=2)
 # example, most importantly, the SMILES string of the molecule for which the counterfactuals
 # are to be generated.
 
+# :param PROCESSING_PATH:
+#       The path to the processing module that is to be used for the counterfactual generation. This
+#       has to be an absolute string path to an existing processing module that is supposed to be used
+#       for the processing of the molecules.
+PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
+# :param MODEL_PATH:
+#       The path to the model that is to be used for the counterfactual generation. This has to be an
+#       absolute string path to an existing checkpoint file that represents a stored model.
+MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model.ckpt')
 # :param SMILES:
 #       The SMILES string of the molecule for which the counterfactuals are to be generated.
 SMILES = 'CCC(=O)CC1=CC=CC=C1'
@@ -97,7 +107,7 @@ def load_model_from_disk(e: Experiment) -> Megan:
     
     :returns: Megan model instance
     """
-    model = load_model()
+    model = Megan.load(e.MODEL_PATH)
     return model
 
 
@@ -115,7 +125,8 @@ def experiment(e: Experiment):
     e.log(f'loaded model of class "{model.__class__.__name__}"')
     
     e.log(f'starting to load processing...')
-    processing: MoleculeProcessing = load_processing()
+    module = dynamic_import(e.PROCESSING_PATH)
+    processing: MoleculeProcessing = module.processing
     e.log(f'loaded processing of class {processing.__class__.__name__}')
 
     with tempfile.TemporaryDirectory() as temp_path:
