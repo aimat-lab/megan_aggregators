@@ -248,7 +248,7 @@ def create_test_set(e: Experiment,
             
         # We need to delete that element from the base dataset then to avoid leakage of test time 
         # information into the test dataset.
-        if random.random() < 0.6:
+        if random.random() < 0.75:
             del dataset[index]
             
     # ~ saving as csv
@@ -397,6 +397,11 @@ def experiment(e: Experiment):
     # ~ protonation pre-processing
     
     e.log('protonating with dimorphite...')
+    
+    e.apply_hook(
+        'before_protonation',
+        dataset=dataset
+    )
     
     # 04.08.2021: Added the option to disable the protonation pre-processing.
     if e.USE_DIMORPHITE:

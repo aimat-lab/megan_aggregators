@@ -79,8 +79,8 @@ FIG_SIZE = 6
 #       values are the human readable names of the classes so that they can be properly labeled in the 
 #       visualizations.
 CLASS_NAMES = {
-    0: 'aggregator',
-    1: 'non-aggregator',
+    0: 'non-aggregator',
+    1: 'aggregator',
 }
 
 

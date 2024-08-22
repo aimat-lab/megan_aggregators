@@ -13,7 +13,7 @@ from megan_aggregators.utils import EXPERIMENTS_PATH
 #       This parameter is supposed to be a string path to the folder that contains the chunked version of the dataset.
 #       This folder should contain two subfolders "train" and "test" which in turn contain the chunked version of the
 #       training and test set in visual graph dataset format respectively.
-CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_combined')
+CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_binary_new')
 # :param DATASET_TYPE:
 #       This is the parameter that determines the type of the dataset. It may be either "classification" or "regression".
 DATASET_TYPE: str = 'classification'
@@ -21,8 +21,8 @@ DATASET_TYPE: str = 'classification'
 #       This dictionary is supposed to contain the human readable names of the target values of the dataset. The keys
 #       are the integer indices of the target values and the values are the human readable names of the target values.
 TARGET_NAMES: dict = {
-    0: 'aggregator',
-    1: 'non-aggregator',
+    0: 'non-aggregator',
+    1: 'aggregator',
 }
 
 
@@ -42,11 +42,11 @@ NUM_CHANNELS: int = 2
 #       visualizations.
 CHANNEL_INFOS: dict = {
     0: {
-        'name': 'aggregator',
+        'name': 'non-aggregator',
         'color': 'skyblue',
     },
     1: {
-        'name': 'non-aggregator',
+        'name': 'aggregator',
         'color': 'coral',
     }
 }
@@ -54,7 +54,7 @@ CHANNEL_INFOS: dict = {
 #       This list determines the layer structure of the model's graph encoder part. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
 #       in that layer of the encoder network.
-UNITS: t.List[int] = [64, 64, 64]
+UNITS: t.List[int] = [64, 64, 64, 64]
 HIDDEN_UNITS = 128
 # :param IMPORTANCE_UNITS:
 #       This list determines the layer structure of the importance MLP which determines the node importance 
@@ -82,7 +82,7 @@ IMPORTANCE_FACTOR: float = 1.0
 #       This parameter more or less controls how expansive the explanations are - how much of the graph they
 #       tend to cover. Higher values tend to lead to more expansive explanations while lower values tend to 
 #       lead to sparser explanations. Typical value range 0.5 - 1.5
-IMPORTANCE_OFFSET: float = 0.75
+IMPORTANCE_OFFSET: float = 0.7
 # :param SPARSITY_FACTOR:
 #       This is the coefficient that is used to scale the explanation sparsity loss during training.
 #       The higher this value the more explanation sparsity (less and more discrete explanation masks)
@@ -126,7 +126,7 @@ CONTRASTIVE_FACTOR: float = 1.0
 # :param CONTRASTIVE_NOISE:
 #       This float value determines the noise level that is applied when generating the positive augmentations 
 #       during the contrastive learning process.
-CONTRASTIVE_NOISE: float = 0.1
+CONTRASTIVE_NOISE: float = 0.05
 # :param CONTRASTIVE_TEMP:
 #       This float value is a hyperparameter that controls the "temperature" of the contrastive learning loss.
 #       The higher this value, the more the contrastive learning will be smoothed out. The lower this value,
@@ -151,7 +151,7 @@ PREDICTION_FACTOR: float = 1.0
 #       This is a float value that determines the amount of label smoothing to be applied on the classification 
 #       target values. This regularizes the model to not be too confident about the target values and can help
 #       to prevent overfitting.
-LABEL_SMOOTHING: float = 0.0
+LABEL_SMOOTHING: float = 0.05
 # :param CLASS_WEIGHTS:
 #       This is a list that determines the class weights that are applied during the training of the model. 
 #       This list should have as many values as there are target classes in the given classification task.

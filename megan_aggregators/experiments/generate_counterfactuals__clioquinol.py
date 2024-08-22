@@ -4,8 +4,12 @@ for which the counterfactuals are generated. That molecule being "Clioquinol".
 This molecule is a known aggregator which means that the counterfactuals are supposed to flip the 
 label to non-aggregator.
 """
+import os
+
 from pycomex.functional.experiment import Experiment
 from pycomex.utils import folder_path, file_namespace
+
+from megan_aggregators.utils import EXPERIMENTS_PATH
 
 # == EXPERIMENT PARAMETERS ==
 # These parameters define the behavior of the counterfactual generation. This includes for 
@@ -14,7 +18,7 @@ from pycomex.utils import folder_path, file_namespace
 
 # :param SMILES:
 #       The SMILES string of the molecule for which the counterfactuals are to be generated.
-SMILES = 'C1=CC2=C(C(=C(C=C2Cl)I)O)N=C1 '
+SMILES = 'C1=CC2=C(C(=C(C=C2Cl)I)O)N=C1'
 # :param NUM_COUNTERFACTUALS:
 #       The number of counterfactuals to be generated for the given molecule.
 NUM_COUNTERFACTUALS: int = 10
@@ -25,6 +29,11 @@ NUM_COUNTERFACTUALS: int = 10
 #       original are considered during the counterfactual search. For values higher than 1, all of 
 #       the neighbors are iteratively expanded by single graph edits as well.
 NEIGHBORHOOD_RANGE: int = 2
+# :param MODEL_PATH:
+#       The path to the model that is to be used for the counterfactual generation. This has to be an
+#       absolute string path to an existing checkpoint file that represents a stored model.
+#MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', '20_08_2024__16_03__i9qk', 'model.ckpt')
+MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model_best.ckpt')
 
 # == VISUALIZATION PARAMETERS ==
 # :param IMAGE_WIDTH:
@@ -36,14 +45,6 @@ IMAGE_HEIGHT = 1000
 # :param FIG_SIZE:
 #       The size of the figures to be generated for the visualizations of the counterfactuals.
 FIG_SIZE = 6
-# :param CLASS_NAMES:
-#       This dictionariy defines the integer indices of the classes as the keys and the corresponding 
-#       values are the human readable names of the classes so that they can be properly labeled in the 
-#       visualizations.
-CLASS_NAMES = {
-    0: 'aggregator',
-    1: 'non-aggregator',
-}
 
 experiment = Experiment.extend(
     'generate_counterfactuals.py',

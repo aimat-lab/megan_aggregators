@@ -785,9 +785,10 @@ def experiment(e: Experiment):
     # If this config flag is set, we actually want to load the best model that was found at any point 
     # during the training (according to the performance on the validation dataset) instead of the final 
     # model state at the end of the training process.
-    if e.USE_BEST:
+    model_best_path = os.path.join(e.path, 'model_best.ckpt')
+    if e.USE_BEST and os.path.exists(model_best_path):
         e.log('loading the best model...')
-        model = Megan.load(os.path.join(e.path, 'model_best.ckpt'))
+        model = Megan.load(model_best_path)
     
     # ~ evaluating on external dataset
     e.log('validating model on external dataset...')
