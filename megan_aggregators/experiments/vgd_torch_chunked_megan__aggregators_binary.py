@@ -13,7 +13,7 @@ from megan_aggregators.utils import EXPERIMENTS_PATH
 #       This parameter is supposed to be a string path to the folder that contains the chunked version of the dataset.
 #       This folder should contain two subfolders "train" and "test" which in turn contain the chunked version of the
 #       training and test set in visual graph dataset format respectively.
-CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_binary_new')
+CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_new')
 # :param DATASET_TYPE:
 #       This is the parameter that determines the type of the dataset. It may be either "classification" or "regression".
 DATASET_TYPE: str = 'classification'
@@ -54,7 +54,7 @@ CHANNEL_INFOS: dict = {
 #       This list determines the layer structure of the model's graph encoder part. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
 #       in that layer of the encoder network.
-UNITS: t.List[int] = [64, 64, 64, 64]
+UNITS: t.List[int] = [64, 64, 64]
 HIDDEN_UNITS = 128
 # :param IMPORTANCE_UNITS:
 #       This list determines the layer structure of the importance MLP which determines the node importance 
@@ -82,7 +82,7 @@ IMPORTANCE_FACTOR: float = 1.0
 #       This parameter more or less controls how expansive the explanations are - how much of the graph they
 #       tend to cover. Higher values tend to lead to more expansive explanations while lower values tend to 
 #       lead to sparser explanations. Typical value range 0.5 - 1.5
-IMPORTANCE_OFFSET: float = 0.7
+IMPORTANCE_OFFSET: float = 1.0
 # :param SPARSITY_FACTOR:
 #       This is the coefficient that is used to scale the explanation sparsity loss during training.
 #       The higher this value the more explanation sparsity (less and more discrete explanation masks)
@@ -151,7 +151,7 @@ PREDICTION_FACTOR: float = 1.0
 #       This is a float value that determines the amount of label smoothing to be applied on the classification 
 #       target values. This regularizes the model to not be too confident about the target values and can help
 #       to prevent overfitting.
-LABEL_SMOOTHING: float = 0.05
+LABEL_SMOOTHING: float = 0.1
 # :param CLASS_WEIGHTS:
 #       This is a list that determines the class weights that are applied during the training of the model. 
 #       This list should have as many values as there are target classes in the given classification task.
@@ -182,15 +182,21 @@ OUTPUT_NORM: t.Optional[float] = None
 
 # :param BATCH_SIZE:
 #       The number of elements to be processed in one batch during the training process.
-BATCH_SIZE: int = 100
+BATCH_SIZE: int = 150
 # :param EPOCHS:
 #       The number of epochs to train the model for.
-EPOCHS: int = 10
+EPOCHS: int = 25
 # :param LEARNING_RATE:
 #       The learning rate for the model training process.
 LEARNING_RATE: float = 1e-4
+# :param USE_BEST:
+#       This flag controls whether or not the best model (according to the validation performance) should 
+#       be used as the final model in the end or not. If this is set to False, the model at the end of the 
+#       training process will be used.
+USE_BEST: bool = False
 
 __TESTING__ = False
+__DEBUG__ = False
 
 WANDB_PROJECT = 'megan_aggregators'
 WANDB_PROJECT = None

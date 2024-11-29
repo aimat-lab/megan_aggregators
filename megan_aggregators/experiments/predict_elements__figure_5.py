@@ -55,7 +55,7 @@ def evaluate(e: Experiment,
         figsize=(5, 5),
     )
     ax.set_xlabel('binding energy')
-    ax.set_ylabel('aggregator confidence')
+    ax.set_ylabel('non-aggregator confidence')
     
     for element, graph, info in zip(elements, graphs, infos):
         confidence = softmax(info['graph_output'])[0]

@@ -115,8 +115,9 @@ class ProcessingWorker(multiprocessing.Process):
                  use_coordinates: bool,
                  class_0_key: str,
                  class_1_key: str,
+                 **kwargs,
                  ):
-        super(ProcessingWorker, self).__init__()
+        super(ProcessingWorker, self).__init__(**kwargs)
         
         self.input_queue = input_queue
         self.output_queue = output_queue
@@ -227,7 +228,6 @@ def create_test_set(e: Experiment,
     dl = DimorphiteDL(
         min_ph=e.MIN_PH,
         max_ph=e.MAX_PH,
-        #max_variants=1,
         pka_precision=e.PKA_PRECISION,
     )
     
@@ -248,7 +248,7 @@ def create_test_set(e: Experiment,
             
         # We need to delete that element from the base dataset then to avoid leakage of test time 
         # information into the test dataset.
-        if random.random() < 0.75:
+        if random.random() < 0.7:
             del dataset[index]
             
     # ~ saving as csv
@@ -321,6 +321,7 @@ def experiment(e: Experiment):
             use_coordinates=e.USE_COORDINATES,
             class_0_key=e.CLASS_0_KEY,
             class_1_key=e.CLASS_1_KEY,
+            daemon=True,
         )
         worker.start()
         workers.append(worker)
@@ -433,7 +434,7 @@ def experiment(e: Experiment):
                 index += 1
                 
             if c % 10_000 == 0:
-                e.log(f' * {c}/{len(dataset)} processed')
+                e.log(f' * {c}/{len(dataset)} processed - {index} protonated')
                 
     else:
         

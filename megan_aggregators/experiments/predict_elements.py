@@ -35,7 +35,7 @@ PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
 # :param MODEL_PATH:
 #       The path to the model that is to be used for the counterfactual generation. This has to be an
 #       absolute string path to an existing checkpoint file that represents a stored model.
-MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model_best.ckpt')
+MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'candidate_3', 'model.ckpt')
 # :param ELEMENTS:
 #       This list defines the elements for which the model predictions should be generated. THis is a list of 
 #       dictionaries where each dictionary contains the information about one element. This dictionary may contain 

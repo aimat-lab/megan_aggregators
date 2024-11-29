@@ -2,6 +2,8 @@
 Module containing various utility methods.
 """
 import os
+import time
+import datetime
 import random
 import shutil
 import pathlib
@@ -9,6 +11,7 @@ import logging
 import tempfile
 import subprocess
 import tempfile
+import contextlib
 from typing import List
 import typing as t
 
@@ -18,10 +21,12 @@ import jinja2 as j2
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pytorch_lightning as pl
 from weasyprint import HTML, CSS
 from dimorphite_dl import DimorphiteDL
 from torch.utils.data import Dataset
 from scipy.special import softmax
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.metrics import roc_curve
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import confusion_matrix
@@ -780,3 +785,117 @@ def create_report(pages: list[dict],
         css = CSS(os.path.join(TEMPLATES_PATH, 'report.css'))
         html.write_pdf(path, stylesheets=[css])
     
+    
+class EstimateTimeCallback(pl.Callback):
+    
+    def __init__(self, logger: logging.Logger = NULL_LOGGER):
+        self.logger = logger
+        
+        self.epoch_durations: list[int] = []
+        self.time_start: int = None
+        self.time_remaining: int = None 
+        self.eta: datetime.datetime = None
+        
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.time_start = time.time()
+        
+    def on_train_epoch_end(self, trainer, pl_module):
+        duration = time.time() - self.time_start
+        self.epoch_durations.append(duration)
+        
+        mean_duration = np.mean(self.epoch_durations)
+        self.time_remaining = mean_duration * (trainer.max_epochs - trainer.current_epoch)
+        self.eta = datetime.datetime.now() + datetime.timedelta(seconds=self.time_remaining)
+        
+        self.logger.info(
+            f' * epoch ({trainer.current_epoch}/{trainer.max_epochs}) '
+            f' - time per epoch: ~{duration/60:.2f}min '
+            f' - time remaining: ~{self.time_remaining/60:.2f}min '
+            f' - eta: {self.eta.strftime("%a %d %b %H:%M")}'
+        )
+        
+        
+@contextlib.contextmanager
+def handle_keyboard_interrupt():
+    """
+    This is a context manager which can be used to cathc the KeyboardInterrupt exception and exit the
+    program gracefully. This is useful when running long training loops or other processes which should
+    be able to be stopped by the user at any time.
+    """
+    try:
+        yield
+    except KeyboardInterrupt:
+        print("Keyboard interrupt caught. Exiting gracefully.")
+        
+        
+
+class IntegerOutputClassifier(BaseEstimator, ClassifierMixin):
+    
+    def __init__(self, classifier):
+        """
+        Wrapper for an sklearn classifier that ensures integer output for the predict method.
+
+        Parameters:
+        classifier: An instance of an sklearn classifier.
+        """
+        self.classifier = classifier
+        
+    def fit(self, X, y, **kwargs):
+        """
+        Fit the wrapped classifier to the data.
+
+        Parameters:
+        X: array-like of shape (n_samples, n_features)
+            Training data.
+        y: array-like of shape (n_samples,)
+            Target values.
+        """
+        self.classifier.fit(X, y, **kwargs)
+        return self
+
+    def predict(self, X):
+        """
+        Predict classes for X and return integer outputs.
+
+        Parameters:
+        X: array-like of shape (n_samples, n_features)
+            Input data.
+
+        Returns:
+        array-like of shape (n_samples,)
+            Predicted classes as integers.
+        """
+        return self.classifier.predict(X).astype(int)
+
+    def predict_proba(self, X):
+        """
+        Predict class probabilities for X.
+
+        Parameters:
+        X: array-like of shape (n_samples, n_features)
+            Input data.
+
+        Returns:
+        array-like of shape (n_samples, n_classes)
+            Predicted class probabilities.
+        """
+        return self.classifier.predict_proba(X)
+
+    def score(self, X, y):
+        """
+        Return the mean accuracy on the given test data and labels.
+
+        Parameters:
+        X: array-like of shape (n_samples, n_features)
+            Test data.
+        y: array-like of shape (n_samples,)
+            True labels.
+
+        Returns:
+        float
+            Mean accuracy of self.predict(X) with respect to y.
+        """
+        return self.classifier.score(X, y)
+    
+    def __sklearn_is_fitted__(self):
+        return True

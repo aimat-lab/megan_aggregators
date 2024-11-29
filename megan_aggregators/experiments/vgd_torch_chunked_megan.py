@@ -35,6 +35,7 @@ from graph_attention_student.visualization import plot_regression_fit
 from graph_attention_student.torch.megan import Megan
 from graph_attention_student.torch.model import AbstractGraphModel
 from graph_attention_student.torch.data import data_list_from_graphs
+from graph_attention_student.torch.utils import SwaCallback
 from graph_attention_student.utils import array_normalize
 
 from megan_aggregators.utils import ChunkedDataset, MultiChunkedDataset, GraphDataset
@@ -43,6 +44,7 @@ from megan_aggregators.utils import plot_roc_curve
 from megan_aggregators.utils import plot_confusion_matrix
 from megan_aggregators.utils import plot_calibration_curve
 from megan_aggregators.utils import create_confidence_histograms
+from megan_aggregators.utils import EstimateTimeCallback
 
 
 # == DATASET PARAMETERS ==
@@ -764,7 +766,11 @@ def experiment(e: Experiment):
     trainer = pl.Trainer(
         max_epochs=e.EPOCHS,
         # logger=CSVLogger('logs', name='megan'),
-        callbacks=ValidationCallback(),
+        callbacks=[
+            ValidationCallback(),
+            EstimateTimeCallback(logger=e.logger),
+            #SwaCallback(history_length=5, logger=e.logger),
+        ],
     )
     trainer.fit(
         model=model,

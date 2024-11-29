@@ -26,7 +26,7 @@ DATASET_TYPE: str = 'classification'
 #       The path to the model that is to be used for the concept extraction. This has to be an absolute 
 #       string path to an existing checkpoint file that represents a stored model.
 #MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__antibiotics', '006_with_contrastive', 'model_best.ckpt')
-MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model.ckpt')
+MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'candidate_3', 'model.ckpt')
 
 # == CONCEPT PARAMETERS ==
 # These parameters define the behavior of the concept extraction procedure.
@@ -46,14 +46,15 @@ MIN_CLUSTER_SIZE: int = 10
 #       This is a parameter of the HDSCAN clustering algorithm that is used for the concept clustering.
 #       This parameter determines how conservative the clustering algorithm is. The higher this value, the fewer 
 #       clusters there will be.
-MIN_SAMPLES: int = 5
+MIN_SAMPLES: int = 3
+#MIN_SAMPLES: int = 15
 # :param CHANNEL_INFOS:
 #       This dictionary can be used to add additional information about the explanation channels that
 #       are used in this experiment. The integer keys of the dict are the indices of the channels
 #       and the values are dictionaries that contain the information about the channel with that index.
 CHANNEL_INFOS: t.Dict[int, dict] = {
-    0: {'name': 'non-aggregator', 'color': '#FF7B2F'},
-    1: {'name': 'aggregator', 'color': '#3EFFAF'},
+    0: {'name': 'non-aggregator', 'color': '#3EFFAF'},
+    1: {'name': 'aggregator', 'color': '#FF7B2F'},
 }
 # :param OPTIMIZE_PROTOTYPE:
 #       This boolean flag determines whether the concept prototypes are supposed to be optimized or not.

@@ -4,6 +4,8 @@ import pytest
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.utils.validation import check_is_fitted
 
 from visual_graph_datasets.data import load_visual_graph_element
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
@@ -17,6 +19,7 @@ from megan_aggregators.utils import load_processing
 from megan_aggregators.utils import create_report
 from megan_aggregators.utils import plot_calibration_curve
 from megan_aggregators.utils import create_confidence_histograms
+from megan_aggregators.utils import IntegerOutputClassifier
 
 from .util import ASSETS_PATH, ARTIFACTS_PATH
 
@@ -169,3 +172,27 @@ def test_load_processing_basically_works():
     graph = processing.process(smiles)
     assert isinstance(graph, dict)
     assert len(graph) != 0
+    
+    
+def test_integer_output_classifier_basically_works():
+    """
+    The IntegerOutputClassifier is a simple wrapper around a sklearn classifier model such that the 
+    output array of the predict method is actually a intger typed array.
+    """
+    model = RandomForestClassifier()
+    model_wrapper = IntegerOutputClassifier(model)
+    
+    assert isinstance(model_wrapper, IntegerOutputClassifier)
+    # Additionally the output of this method needs to be hardcoded as true regardless of the 
+    # fitted state of the model.
+    assert model_wrapper.__sklearn_is_fitted__() == True
+    # This should therefore not cause an issue!
+    check_is_fitted(model_wrapper)
+    
+    # Now we can check if the output of the predict method is actually an integer array.
+    X = np.random.uniform(0, 1, size=(100, 10))
+    y = np.random.randint(2, size=(100, ))
+    model.fit(X, y)
+    y_pred = model_wrapper.predict(X)
+    assert isinstance(y_pred, np.ndarray)
+    assert y_pred.dtype == np.int64

@@ -217,7 +217,7 @@ def experiment(e: Experiment):
                     ax_im.set_yticks([])
                     draw_image(ax_im, data['image_path'])
 
-                    ax_agg.set_title(f'class 0 - aggregator evidence\n'
+                    ax_agg.set_title(f'class 0 - non-aggregator evidence\n'
                                      f'leave-one-out fidelity: {dev[0][0]:.2f}')
                     ax_agg.set_xticks([])
                     ax_agg.set_yticks([])
@@ -225,7 +225,7 @@ def experiment(e: Experiment):
                     plot_node_importances_background(ax_agg, graph, node_positions, ni[:, 0])
                     plot_edge_importances_background(ax_agg, graph, node_positions, ei[:, 0])
 
-                    ax_non.set_title(f'class 1 - non-aggregator evidence\n'
+                    ax_non.set_title(f'class 1 - aggregator evidence\n'
                                      f'leave-one-out fidelity: {dev[1][1]:.2f}')
                     ax_non.set_xticks([])
                     ax_non.set_yticks([])

@@ -4,6 +4,7 @@ import typing as t
 from collections import defaultdict
 
 import numpy as np
+from rich import print as pprint
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics import accuracy_score
 from pycomex.functional.experiment import Experiment
@@ -158,7 +159,7 @@ def load_model(e: Experiment) -> Megan:
     This base implementation just loads a Megan model from the path that is defined in the
     MODEL_PATH experiment value.
     """
-    model = Megan.load_from_checkpoint(e.MODEL_PATH)
+    model = Megan.load(e.MODEL_PATH)
     return model
 
 
@@ -169,9 +170,7 @@ def experiment(e: Experiment):
     
     if not e.OPENAI_KEY:
         e.log(' * WARNING: No OpenAI key is set. Concept hypotheses will not be generated.')
-    
-    # Generally, the concept extraction needs 
-    
+        
     # ~ loading the dataset
     e.log('loading dataset...')
     dataset_path = e.apply_hook('get_dataset_path')
@@ -232,7 +231,7 @@ def experiment(e: Experiment):
         min_dist=0.0,
         num_neighbors=100,
         base_figsize=10,
-        repulsion_strength=2.0,
+        repulsion_strength=5,
         logger=e.logger,
     )
     fig_path = os.path.join(e.path, 'umap_concepts.pdf')
@@ -363,11 +362,15 @@ def experiment(e: Experiment):
     e.log(f'saving the concepts to disk...')
     concepts_path = os.path.join(e.path, 'concepts')
     os.mkdir(concepts_path)
+    pprint(concepts[0])
     writer = ConceptWriter(
         path=concepts_path,
         processing=processing,
         model=model,
         logger=e.logger,
+        # With this flag we specify that we want to export the elements directly instead of 
+        # just implicitly by index.
+        write_elements=True,
     )
     writer.write(concepts)
     

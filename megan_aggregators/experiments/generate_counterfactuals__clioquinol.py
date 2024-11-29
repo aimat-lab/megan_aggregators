@@ -33,7 +33,7 @@ NEIGHBORHOOD_RANGE: int = 2
 #       The path to the model that is to be used for the counterfactual generation. This has to be an
 #       absolute string path to an existing checkpoint file that represents a stored model.
 #MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', '20_08_2024__16_03__i9qk', 'model.ckpt')
-MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model_best.ckpt')
+MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'candidate_3', 'model.ckpt')
 
 # == VISUALIZATION PARAMETERS ==
 # :param IMAGE_WIDTH:
