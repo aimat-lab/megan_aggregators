@@ -15,12 +15,13 @@ from pycomex.utils import folder_path, file_namespace
 from visual_graph_datasets.util import dynamic_import
 from visual_graph_datasets.processing.base import ProcessingBase
 from visual_graph_datasets.processing.molecules import MoleculeProcessing
+from visual_graph_datasets.processing.molecules import mol_from_smiles
 from visual_graph_datasets.visualization.importances import create_combined_importances_pdf
 from graph_attention_student.torch.megan import Megan
 
 from megan_aggregators.utils import load_processing
 from megan_aggregators.utils import get_protonations
-from megan_aggregators.utils import EXPERIMENTS_PATH
+from megan_aggregators.utils import EXPERIMENTS_PATH, MODEL_CHECKPOINT_PATH
 from megan_aggregators.torch import load_model
 
 # == INPUT PARAMETERS ==
@@ -35,7 +36,7 @@ PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
 # :param MODEL_PATH:
 #       The path to the model that is to be used for the counterfactual generation. This has to be an
 #       absolute string path to an existing checkpoint file that represents a stored model.
-MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'candidate_3', 'model.ckpt')
+MODEL_PATH: str = MODEL_CHECKPOINT_PATH
 # :param ELEMENTS:
 #       This list defines the elements for which the model predictions should be generated. THis is a list of 
 #       dictionaries where each dictionary contains the information about one element. This dictionary may contain 
@@ -256,6 +257,7 @@ def experiment(e: Experiment):
     #       This hooks is supposed to implement the loading of the model from it's persistent form. The return 
     #       value of this hook is supposed to be the loaded "Megan" model object.
     model: Megan = e.apply_hook('load_model')
+    model.to('cpu')
     e.log(f'loaded model of class "{model.__class__.__name__}"')
     
     e.log(f'starting to load processing...')
@@ -321,10 +323,19 @@ def experiment(e: Experiment):
     image_paths: list[str] = []
     for index, (element, graph) in enumerate(zip(elements, graphs)):
         smiles = element['smiles']
+        
+        # Optionally, it is possible to provide a reference molecule in the format of SMILES string 
+        # as well. The final molecule will then be aligned to this reference molecule in the visualization.
+        smiles_ref = element.get('reference', None)
+        mol_ref = None
+        if smiles_ref:
+            mol_ref = mol_from_smiles(smiles_ref)
+        
         fig, node_positions = processing.visualize_as_figure(
             value=smiles,
             width=1000,
             height=1000,
+            reference_mol=mol_ref,
         )
         graph['node_positions'] = node_positions
         fig_path = os.path.join(vis_folder, f'{index:03d}.png')

@@ -52,7 +52,8 @@ ASSETS_PATH = os.path.join(PATH, 'assets')
 
 # 18.04.23 - Decided that it would make sense to ship one version of the fully trained model instead of
 # always having to train one.
-MODEL_PATH = os.path.join(PATH, 'model')
+MODEL_FOLDER_PATH = os.path.join(PATH, 'model')
+MODEL_CHECKPOINT_PATH = os.path.join(MODEL_FOLDER_PATH, 'model.ckpt')
 # 15.05.23 - If we save the model into the repository then we also need to save the processing file as well
 # for it to make sense. We will also place that into the model folder.
 PROCESSING_PATH = os.path.join(ASSETS_PATH, 'process.py')

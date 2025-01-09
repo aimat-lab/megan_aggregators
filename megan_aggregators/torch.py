@@ -9,10 +9,10 @@ from megan_aggregators.utils import load_processing
 from megan_aggregators.utils import generate_counterfactuals_with_model
 from megan_aggregators.utils import EXPERIMENTS_PATH
 from megan_aggregators.utils import ASSETS_PATH
-from megan_aggregators.utils import MODEL_PATH
+from megan_aggregators.utils import MODEL_FOLDER_PATH, MODEL_CHECKPOINT_PATH
 
 
-def load_model(model_path: str = os.path.join(MODEL_PATH, 'model.ckpt')
+def load_model(model_path: str = MODEL_CHECKPOINT_PATH
                ) -> Megan:
     """
     This function will load the model which is persistently saved on the disk using the given 
@@ -34,7 +34,7 @@ def load_model(model_path: str = os.path.join(MODEL_PATH, 'model.ckpt')
 
 
 def predict_aggregator(smiles: str,
-                       model_path: str = os.path.join(MODEL_PATH, 'model.ckpt'),
+                       model_path: str = MODEL_CHECKPOINT_PATH,
                        ) -> float:
     """
     Given the ``smiles`` string representation of a molecule, this function will predict its 
@@ -83,7 +83,7 @@ def predict_aggregator(smiles: str,
 
 
 def explain_aggregation(smiles: str,
-                        model_path: str = os.path.join(MODEL_PATH, 'model.ckpt'),
+                        model_path: str = MODEL_CHECKPOINT_PATH,
                         show_plot: bool = False,
                         ) -> tuple[dict, np.ndarray, np.ndarray]:
     # ~ processing the SMILES into graph
@@ -116,7 +116,7 @@ def explain_aggregation(smiles: str,
 
 def generate_counterfactuals(smiles: str,
                              num: int,
-                             model_path: str = os.path.join(MODEL_PATH, 'model.ckpt')
+                             model_path: str = MODEL_CHECKPOINT_PATH,
                              ) -> list[tuple[str, np.ndarray]]:
     """
     
