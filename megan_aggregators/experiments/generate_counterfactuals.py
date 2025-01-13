@@ -32,6 +32,7 @@ from vgd_counterfactuals.generate.molecules import get_neighborhood
 from megan_aggregators.utils import load_processing
 from megan_aggregators.torch import load_model
 from megan_aggregators.utils import EXPERIMENTS_PATH
+from megan_aggregators.utils import MODEL_CHECKPOINT_PATH
 
 mpl.use('TkAgg')
 np.set_printoptions(precision=2)
@@ -49,7 +50,7 @@ PROCESSING_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'process.py')
 # :param MODEL_PATH:
 #       The path to the model that is to be used for the counterfactual generation. This has to be an
 #       absolute string path to an existing checkpoint file that represents a stored model.
-MODEL_PATH: str = os.path.join(EXPERIMENTS_PATH, 'results', 'vgd_torch_chunked_megan__aggregators_binary', 'debug', 'model.ckpt')
+MODEL_PATH: str = MODEL_CHECKPOINT_PATH
 # :param SMILES:
 #       The SMILES string of the molecule for which the counterfactuals are to be generated.
 SMILES = 'CCC(=O)CC1=CC=CC=C1'

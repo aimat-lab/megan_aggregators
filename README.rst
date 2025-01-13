@@ -179,8 +179,12 @@ computation experimentation. In this framework, each experiment is implemented a
 All the experiment modules can be found in the ``megan_aggregators/experiments`` folder. The most important subset of experiments 
 will be described below:
 
-- ``train_megan.py`` - This experiment will train a MEGAN model, if provided a valid path to a binary classification visual 
-  graph dataset.
+- ``predict_elements.py`` - Uses the shipped model to predict the aggregation class of a set of molecules and creates visualizations of 
+  the explanations for each prediction. The elements to be predicted can be defined as an experiment parameter.
+- ``generate_counterfactuals.py`` - Uses the shipped model to predict the counterfactuals for a given molecule which can be defined 
+  as an experiment parameter.
+- ``yang_baseline.py`` - Implements the Yang et al. baseline model for the aggregation prediction task.
+
 
 📖 Referencing
 --------------

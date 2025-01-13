@@ -31,9 +31,9 @@ matplotlib = ">=3.5.3"
 numpy = ">=1.23.2,<2.0"
 python-decouple = ">=3.6"
 # computational experiment framework
-pycomex = ">=0.12.0"
+pycomex = ">=0.13.2"
 # visual graph dataset format
-visual-graph-datasets = ">=0.7.2"
+visual-graph-datasets = ">=0.15.7"
 # the MEGAN model implementation
 graph-attention-student = ">=0.18.4"
 # PDF report generation
