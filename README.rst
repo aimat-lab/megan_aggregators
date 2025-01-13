@@ -183,7 +183,10 @@ will be described below:
   the explanations for each prediction. The elements to be predicted can be defined as an experiment parameter.
 - ``generate_counterfactuals.py`` - Uses the shipped model to predict the counterfactuals for a given molecule which can be defined 
   as an experiment parameter.
-- ``yang_baseline.py`` - Implements the Yang et al. baseline model for the aggregation prediction task.
+- ``yang_baseline.py`` - Implements the Yang et al. baseline model for the aggregation prediction task. To execute this experiment, you'll 
+  first have to download the ``aggregators_new.csv`` dataset from the file share: https://bwsyncandshare.kit.edu/s/4r9kgyCFQL6PTcF 
+  and place it into the ``megan_aggregators/experiments/assets`` 
+  folder.
 
 
 📖 Referencing
