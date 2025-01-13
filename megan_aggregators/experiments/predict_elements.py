@@ -364,6 +364,8 @@ def experiment(e: Experiment):
 
     e.log('visualizing explanations...')
     pdf_path = os.path.join(e.path, 'combined_importances.pdf')
+    cache_path = os.path.join(e.path, '_cache_images')
+    os.mkdir(cache_path)
     create_combined_importances_pdf(
         graph_list=graphs,
         image_path_list=image_paths,
@@ -378,7 +380,11 @@ def experiment(e: Experiment):
         output_path=pdf_path,
         logger=e.logger,
         base_fig_size=12,
+        #base_fig_size=20,
+        #radius= 23.0,
+        #thickness = 10.0,
         log_step=100,
+        cache_path=cache_path,
     )
         
         

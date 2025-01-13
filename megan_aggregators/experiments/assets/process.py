@@ -53,6 +53,7 @@ class VgdMoleculeProcessing(MoleculeProcessing):
                 dtype=str
             )),
             'description': 'one-hot encoding of atom type',
+            'encodes_symbol': True,
         },
         'hybridization': {
             'callback': chem_prop('GetHybridization', OneHotEncoder(
@@ -104,6 +105,7 @@ class VgdMoleculeProcessing(MoleculeProcessing):
                 dtype=int,
             )),
             'description': 'one-hot encoding of the bond type',
+            'encodes_bond': True,
         },
         'stereo': {
             'callback': chem_prop('GetStereo', OneHotEncoder(
