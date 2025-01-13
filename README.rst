@@ -31,20 +31,22 @@ explanations for each individual prediction.
 📦 Installation by Source
 -------------------------
 
-first clone the repository:
+To install the code, one has to first clone the repository from GitHub:
 
 .. code-block:: shell
 
     git clone https://github.com/aimat-lab/megan_aggregators
 
-For installation, it is recommended to create a new ``conda`` environment based on Python 3.10. After activating 
-the environment, you can install the package in editable mode using the following commands:
+The package should best be installed into a Python 3.10 environment.
+
+To get started, it is recommended to use ``conda`` and create a new environment to install the package. Note that 
+pytorch needs to be explicitly installed before installing the ``megan_aggregators`` package.
 
 .. code-block:: shell
 
     conda create -m agg python=3.10
     conda activate agg
-    pip install torch
+    pip install torch==2.3.1
     pip -e install megan_aggregators/
 
 **Optional.** On Linux it might be necessary to install Tk if not already installed
@@ -59,14 +61,14 @@ the environment, you can install the package in editable mode using the followin
 
     python -m megan_aggregators.examples.00_quickstart
 
-**Installation on Virtual Machines.** On virtual machines, ``cuda`` is usually not available. However, installing pytorch with 
+**⚠️ Installation on Virtual Machines.** On virtual machines, ``cuda`` is usually not available. However, installing pytorch with 
 the above mentioned method will result in segmentation faults.
 Instead, you can replace the ``torch`` installation with the cpu-only version like this:
 
 .. code-block:: shell
 
-    conda install pytorch cpuonly -c pytorch
-
+    pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+    pip install torch_scatter==2.1.2 -f https://data.pyg.org/whl/torch-2.3.1+cpu.html
 
 🚀 Quickstart
 -------------
@@ -74,7 +76,7 @@ Instead, you can replace the ``torch`` installation with the cpu-only version li
 Using the Model
 ~~~~~~~~~~~~~~~
 
-The easiest way to get started is to use the pre-trained model instance that comes shipped with the code. 
+The easiest way to get started is to use the pre-trained model instance that is packaged with the code. 
 
 This model can locally be loaded and is ready to make aggregation predictions within a few lines of code:
 
@@ -114,7 +116,6 @@ This model can locally be loaded and is ready to make aggregation predictions wi
     print(f'Counterfactuals for {SMILES}')
     for smiles, array, distance in counterfactuals:
         print(f' * {smiles:20} ({array[0] * 100:.2f}% aggregator) - distance: {distance:.2f}')
-        
 
 
 Explaining Predictions
@@ -180,40 +181,6 @@ will be described below:
 
 - ``train_megan.py`` - This experiment will train a MEGAN model, if provided a valid path to a binary classification visual 
   graph dataset.
-
-
-🤖 Model Training
------------------
-
-Downloading the Dataset
-~~~~~~~~~~~~~~~~~~~~~~~
-
-The ``aggregators_binary`` dataset can be downloaded from the following URL:
-https://bwsyncandshare.kit.edu/s/pGExzNEkjbadKHw
-It is in the format of a VisualGraphDataset_, which means that the dataset is represented as a folder
-where each element is represented by two files: One JSON file which contains the entire pre-processed graph
-representation of the corresponding element, and one PNG file which depicts a visualization of the molecule
-that is later used to visualize the attributional explanations.
-
-Since this dataset is rather large with ~400.000 molecules, the dataset is about 20GB. Thus, availability
-of a high-speed internet connection and an SSD storage device are highly recommended.
-
-Model Training
-~~~~~~~~~~~~~~
-
-The model training can be performed by executing the python module
-``megan_aggregators/experiments/train_megan.py``. **Before executing**, however, the value of the global
-variable ``VISUAL_GRAPH_DATASET_PATH`` has to be set to wherever the dataset was downloaded to on the local
-system. Additionally, there are several other global variables which can be used to configure the model and
-the training process.
-
-Due to the large dataset size, the training will take a considerable amount of time. Also note that the
-execution of the training process will require **at least 32GB of RAM**.
-
-After the experiment is finished, the results and several visualizations and artifacts can be found in the
-``megan_aggregators/experiments/results`` folder. These artifacts for example include a confusion matrix
-for the classification results on the test set and example visualizations of the generated explanations on
-a subset of the test set.
 
 📖 Referencing
 --------------

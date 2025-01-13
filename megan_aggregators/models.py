@@ -6,7 +6,6 @@ import visual_graph_datasets.typing as tv
 
 from graph_attention_student.torch.megan import Megan
 from megan_aggregators.utils import ASSETS_PATH
-from megan_aggregators.utils import MODEL_PATH
 
 # == GLOBAL VARIABLES ==
 # Here we define some global constant variables that define the default behavior.

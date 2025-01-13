@@ -27,7 +27,7 @@ def load_model(model_path: str = MODEL_CHECKPOINT_PATH
         
     :return: The loaded model.
     """
-    model = Megan.load_from_checkpoint(model_path)
+    model = Megan.load(MODEL_CHECKPOINT_PATH)
     model.eval()
     
     return model

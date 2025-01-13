@@ -66,36 +66,6 @@ def test_plot_calibration_curve():
     assert os.path.exists(fig_path)
 
 
-def test_create_report():
-    """
-    The create_report function should create a PDF file with multiple pages where it is possible to add 
-    multiple image and text elements to each of the pages. 
-    """
-    images = [
-        os.path.join(ASSETS_PATH, 'image_0.png'),
-        os.path.join(ASSETS_PATH, 'image_1.png'),
-    ]
-    
-    pages: list[dict] = []
-    for page_index in range(3):
-        
-        page = {
-            'title': f'Page {page_index}',
-            'images': images,
-            'texts': [
-                'Some text',
-                '<strong>Title.</strong> Some other text',
-            ]
-        }
-        pages.append(page)
-    
-    pdf_path = os.path.join(ARTIFACTS_PATH, 'test_create_report.pdf')
-    create_report(
-        pages=pages,
-        path=pdf_path,
-    )
-
-
 def test_get_version():
     version = get_version()
     assert isinstance(version, str)

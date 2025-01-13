@@ -3,3 +3,4 @@ from megan_aggregators.torch import predict_aggregator
 from megan_aggregators.torch import generate_counterfactuals
 from megan_aggregators.utils import load_processing
 from megan_aggregators.utils import get_protonations
+from megan_aggregators.utils import visualize_explanations
