@@ -1,25 +1,32 @@
 import numpy as np
-import tensorflow.keras as ks
 
+from rich.pretty import pprint
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich import print as rprint
 from megan_aggregators import load_model
 from megan_aggregators import load_processing
 from megan_aggregators.utils import generate_counterfactuals_with_model
 
 np.set_printoptions(precision=2)
 
-# This will load the MEGAN keras model which can be used to make predictions.
-model: ks.models.Model = load_model()
+console = Console()
 
+## --- Loading the Model ---
+model = load_model()
+
+## --- Preparing Input Molecule ---
 smiles = 'Oc1c(I)cc(Cl)c2cccnc12'
 processing = load_processing()
 graph = processing.process(smiles)
 
+## --- Original Prediction ---
 prediction = model.predict_graphs([graph])[0]
-# 0 - non-aggregator
-# 1 - aggregator
 result = np.argmax(prediction)
 print(f'original smiles: {smiles} - label: {result}')
 
+## --- Generating Counterfactuals ---
 # "generate_counterfactuals" is a utility function that can be used to generate counterfactuals for a given 
 # input molecule and model. The result of this operation will be a list of tuples, where each tuple contains
 # the following elements:
@@ -35,9 +42,25 @@ results: tuple[str, np.ndarray, float] = generate_counterfactuals_with_model(
     num=10,
     k_neighborhood=1,
 )
+print('raw results:')
+pprint(results, max_length=3)
 
-print('counterfactuals:')
-for result in results:
-    print(f' * smiles: {result[0]}'
-          f' - label: ({np.argmax(result[1])})'
-          f' - distance {result[2]:.2f}')
+# Create a rich table for counterfactuals
+table = Table(title="🧪 Generated Counterfactuals", show_header=True, header_style="bold magenta")
+table.add_column("Index", style="dim", width=6)
+table.add_column("SMILES", style="cyan", no_wrap=False)
+table.add_column("Predicted Label", style="green", justify="center")
+table.add_column("Distance", style="yellow", justify="right")
+
+for i, result in enumerate(results, 1):
+    smiles_str = result[0]
+    label = np.argmax(result[1])
+    if np.argmax(result[1]) == 0:
+        label = 'non-aggregator (0)'
+    else:
+        label = 'aggregator (1)'
+    distance = f"{result[2]:.2f}"
+    
+    table.add_row(str(i), smiles_str, str(label), distance)
+
+console.print(table)

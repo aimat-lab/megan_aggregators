@@ -12,6 +12,7 @@ import tempfile
 import subprocess
 import tempfile
 import contextlib
+import dimorphite_dl
 from typing import List
 import typing as t
 
@@ -23,7 +24,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pytorch_lightning as pl
 from weasyprint import HTML, CSS
-from dimorphite_dl import DimorphiteDL
 from torch.utils.data import Dataset
 from scipy.special import softmax
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -419,12 +419,20 @@ def visualize_explanations(smiles: str,
             figsize=(num_channels * 10, 10),
             squeeze=False,
         )
+        
+        index_title_map = {
+            0: 'Channel 0 - Non-Aggregator Evidence',
+            1: 'Channel 1 - Aggregator Evidence',
+        }
+        
         for index in range(num_channels):
             ax = rows[0][index]
             ax.set_title(f'channel {index}')
             
             # At first we need to put the visualization of the actual molecule onto the plot
             draw_image(ax, data['image_path'])
+            
+            ax.set_title(index_title_map.get(index, f'Channel {index}'))
             
             # Then we can draw the explanations on top of that
             plot_node_importances_background(
@@ -535,17 +543,18 @@ def get_protonations(smiles: str,
     :param smiles: The SMILES string of the molecule
     :param min_ph: The minimum pH value of the pH range
     :param max_ph: The maximum pH value of the pH range
+    :param max_variants: The maximum number of protonation variants to generate
 
     :returns: List of SMILES strings representing the different protonation states of the molecule
     """
-    dmph = DimorphiteDL(
-        min_ph=min_ph,
-        max_ph=max_ph,
-        pka_precision=0.1,
-        label_states=False,
+    return list(dimorphite_dl.protonate_smiles(
+        smiles,
+        ph_min=min_ph,
+        ph_max=max_ph,
+        precision=0.1,
         max_variants=max_variants,
-    )
-    return dmph.protonate(smiles)
+        label_states=False,
+    ))
 
 
 class ChunkedDataset(Dataset):
@@ -768,7 +777,7 @@ def create_report(pages: list[dict],
                 # Alternatively we can also pass the image as a matplotlib figure instance. In this case
                 # we will save the figure to a file in the temporary directory.
                 elif isinstance(image, plt.Figure):
-                    fig.savefig(image_path)
+                    image.savefig(image_path)
                     
                 image_paths.append(image_path)
                 

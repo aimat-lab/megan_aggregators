@@ -13,7 +13,7 @@ from megan_aggregators.utils import EXPERIMENTS_PATH
 #       This parameter is supposed to be a string path to the folder that contains the chunked version of the dataset.
 #       This folder should contain two subfolders "train" and "test" which in turn contain the chunked version of the
 #       training and test set in visual graph dataset format respectively.
-CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_new')
+CHUNKED_DATASET_PATH: str = os.path.join(EXPERIMENTS_PATH, 'assets', 'cache', 'aggregators_new_u1')
 # :param DATASET_TYPE:
 #       This is the parameter that determines the type of the dataset. It may be either "classification" or "regression".
 DATASET_TYPE: str = 'classification'
@@ -66,14 +66,14 @@ IMPORTANCE_UNITS: t.List[int] = []
 #       This list determines the layer structure of the MLP's that act as the channel-specific projections.
 #       Each element in this list represents one layer where the integer value determines the number of hidden
 #       units in that layer.
-PROJECTION_UNITS: t.List[int] = [64, 128, 256]
+PROJECTION_UNITS: t.List[int] = [64, 256]
 # :param FINAL_UNITS:
 #       This list determines the layer structure of the model's final prediction MLP. Each element in 
 #       this list represents one layer, where the integer value determines the number of hidden units 
 #       in that layer of the prediction network.
 #       Note that the last value of this list determines the output shape of the entire network and 
 #       therefore has to match the number of target values given in the dataset.
-FINAL_UNITS: t.List[int] = [64, 2]
+FINAL_UNITS: t.List[int] = [128, 64, 2]
 # :param IMPORTANCE_FACTOR:
 #       This is the coefficient that is used to scale the explanation co-training loss during training.
 #       Roughly, the higher this value, the more the model will prioritize the explanations during training.
@@ -117,12 +117,12 @@ ATTENTION_AGGREGATION: str = 'max'
 #       This boolean value determines whether the graph embeddings are normalized to a unit length or not.
 #       If this is true, the embedding of each individual explanation channel will be L2 normalized such that 
 #       it is projected onto the unit sphere.
-NORMALIZE_EMBEDDING: bool = True
+NORMALIZE_EMBEDDING: bool = False
 # :param CONTRASTIVE_FACTOR:
 #       This is the factor of the contrastive representation learning loss of the network. If this value is 0 
 #       the contrastive repr. learning is completely disabled (increases computational efficiency). The higher 
 #       this value the more the contrastive learning will influence the network during training.
-CONTRASTIVE_FACTOR: float = 1.0
+CONTRASTIVE_FACTOR: float = 0.0
 # :param CONTRASTIVE_NOISE:
 #       This float value determines the noise level that is applied when generating the positive augmentations 
 #       during the contrastive learning process.
@@ -182,10 +182,10 @@ OUTPUT_NORM: t.Optional[float] = None
 
 # :param BATCH_SIZE:
 #       The number of elements to be processed in one batch during the training process.
-BATCH_SIZE: int = 150
+BATCH_SIZE: int = 64
 # :param EPOCHS:
 #       The number of epochs to train the model for.
-EPOCHS: int = 25
+EPOCHS: int = 150
 # :param LEARNING_RATE:
 #       The learning rate for the model training process.
 LEARNING_RATE: float = 1e-4
@@ -198,7 +198,7 @@ USE_BEST: bool = False
 __TESTING__ = False
 __DEBUG__ = False
 
-WANDB_PROJECT = 'megan_aggregators'
+#WANDB_PROJECT = 'megan_aggregators'
 WANDB_PROJECT = None
 
 experiment = Experiment.extend(

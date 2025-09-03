@@ -32,3 +32,7 @@ megan_aggregators/assets/__pycache__/*
 # artifacts
 tests/artifacts/*
 megan_aggregators/assets/models/*
+
+# custom
+*.joblib
+cliff_clusters.json

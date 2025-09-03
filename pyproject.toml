@@ -40,6 +40,8 @@ graph-attention-student = ">=0.18.4"
 weasyprint = "==61.1"
 # CATs descriptors for yang baseline
 #cats-descriptors = { git = "https://github.com/alexarnimueller/cats-descriptor", branch = "master", subdirectory = "./" }
+# dimorphite_dl for protonation state prediction
+dimorphite-dl = { git = "https://github.com/durrantlab/dimorphite_dl.git", rev = "1166e1f7b4b2f792a02867636af4af49555a8f11" }
 
 [tool.poetry.dev-dependencies]
 pytest = ">=7.1.3"

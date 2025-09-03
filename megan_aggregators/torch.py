@@ -77,7 +77,7 @@ def predict_aggregator(smiles: str,
     # The model predicts the classification LOGITS, so we have to apply the softmax function to
     # get the probabilities.
     out_pred = softmax(info['graph_output'])
-    probab: float = float(out_pred[0])
+    probab: float = float(out_pred[1])
     
     return probab
 

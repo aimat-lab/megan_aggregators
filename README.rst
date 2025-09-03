@@ -23,10 +23,11 @@ explanations for each individual prediction.
 🔔 News
 -------
 
+- **May 2025** - Check out the the published Version of our Paper in *Angewandte Chemie*: https://onlinelibrary.wiley.com/doi/full/10.1002/anie.202503259 
+- **January 2025** - We've released a new and refactored vesion of the web interface!
+- **August 2023** - Check out the arxiv preprint of the `paper`_ here: https://arxiv.org/abs/2306.02206
 - **May 2023** Added the aggregation model to the MeganExplains web interface: `MeganExplains Aggregation <https://megan.aimat.science/predict/megan_aggregator>`_.
   So you can test out the model without having to install it!
-- **August 2023** - Check out the arxiv preprint of the `paper`_ here: https://arxiv.org/abs/2306.02206
-
 
 📦 Installation by Source
 -------------------------
@@ -39,15 +40,19 @@ To install the code, one has to first clone the repository from GitHub:
 
 The package should best be installed into a Python 3.10 environment.
 
-To get started, it is recommended to use ``conda`` and create a new environment to install the package. Note that 
-pytorch needs to be explicitly installed before installing the ``megan_aggregators`` package.
+To get started, it is recommended to use ``uv`` and create a new environment to install the package. Note that 
+pytorch needs to be explicitly installed before installing the ``megan_aggregators`` package due to its dependency on 
+``torch_scatter`` which needs to be compiled against the installed torch version.
 
 .. code-block:: shell
 
-    conda create -m agg python=3.10
-    conda activate agg
-    pip install torch==2.3.1
-    pip -e install megan_aggregators/
+    cd megan_aggregators
+    # Create and activate virtual environment
+    uv venv --seed --python=3.10 .venv
+    source .venv/bin/activate
+    # Installation
+    uv pip install torch==2.3.1
+    uv pip install -e .
 
 **Optional.** On Linux it might be necessary to install Tk if not already installed
 
@@ -83,29 +88,18 @@ This model can locally be loaded and is ready to make aggregation predictions wi
 .. code-block:: python
 
     from megan_aggregators import predict_aggregator
-    from megan_aggregators import get_protonations
     from megan_aggregators import generate_counterfactuals
 
-    SMILES: str = 'CCC(CCN)CCC'
+    SMILES: str = 'Oc1c(I)cc(Cl)c2cccnc12'
 
-    # ~ Aggregation Prediction
+    ## --- Aggregation Prediction ---
     # The "predict_aggregator" function performs an aggregation prediction for the given SMILES 
     # string using the default model and returns the probability of the molecule being an aggregator.
     probability: float = predict_aggregator(SMILES)
     label = 'aggregator' if probability > 0.5 else 'non-aggregator'
-    print(f'The molecule {SMILES} is classified as {label} ({probability*100:.2f}% aggregator)')
+    print(f'\nThe molecule {SMILES} is classified as {label} ({probability*100:.2f}% aggregator)')
 
-    # ~ Protonation States
-    # The "get_protonations" function generates all possible protonation states for the given SMILES
-    # string within the given pH range. The output of the function will be a list of multiple SMILES 
-    # strings which represent the different protonation states.
-    print('Protonation states:')
-    protonated_smiles = get_protonations(SMILES, min_ph=6.4, max_ph=6.4)
-    for smiles in protonated_smiles:
-        _probability: float = predict_aggregator(smiles)
-        print(f' * {smiles} is classified as ({_probability*100:.2f}% aggregator)')
-
-    # ~ Counterfactual Generation
+    ## --- Counterfactual Generation ---
     # The "generate_counterfactuals" fucntion generates the counterfactuals for the given SMILES 
     # string representation of a molecule. These counterfactuals are molecules which are structurally 
     # similar to the original molecule but cause a strongly different prediction by the model. 
@@ -113,10 +107,10 @@ This model can locally be loaded and is ready to make aggregation predictions wi
     # SMILES string and the second value is the models prediction array and the third value is the 
     # difference in the predicted probabilities.
     counterfactuals: list[tuple[str, list, float]] = generate_counterfactuals(SMILES, 10)
-    print(f'Counterfactuals for {SMILES}')
+    print(f'\nCounterfactuals for {SMILES}')
     for smiles, array, distance in counterfactuals:
         print(f' * {smiles:20} ({array[0] * 100:.2f}% aggregator) - distance: {distance:.2f}')
-
+      
 
 Explaining Predictions
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -146,17 +140,16 @@ for the evidence for the "non-aggregator" class.
     smiles = 'CCC(CCN)CCC'
     graph = processing.process(smiles)
 
-    # The model's method "explain_graphs" can be used to create these explanations masks
-    # for the input graph.
-    # The result of this operation will be the combined node and edge explanation arrays
-    # with the following shapes:
+    ## --- Getting Explanations ---
+    # The model's method "forward_graphs" can be used to get the full model output, which 
+    # includes not only the predictions but also the explanation masks.
     # node_importances: (number of atoms, 2)
     # edge_importances: (number of bonds, 2)
     info = model.forward_graphs([graph])[0]
     node_importances = info['node_importance']
     edge_importances = info['edge_importance']
 
-    # ~ visualizing the explanation
+    ## --- Visualizing Explanations ---
     # This utility function will visualize the different explanations channels into
     # separate axes within the same figure.
     fig = visualize_explanations(
@@ -193,13 +186,36 @@ If you use, extend or otherwise mention or work, please cite `the paper <https:/
 
 .. code-block:: bibtex
 
-    @article{sturm2023mitgating
-        title={Mitigating Molecular Aggregation in Drug Discovery with Predictive Insights from Explainable AI},
-        author={Sturm, Hunter and Teufel, Jonas and Kaitlin A., Isfeld and Friederich, Pascal and Davis, Rebecca L.},
-        journal={arxiv.org},
-        year={2023}
+    @article{sturm2025mitigating,
+      author = {Sturm, Hunter and Teufel, Jonas and Isfeld, Kaitlin A. and Friederich, Pascal and Davis, Rebecca L.},
+      title = {Mitigating Molecular Aggregation in Drug Discovery With Predictive Insights From Explainable AI},
+      journal = {Angewandte Chemie International Edition},
+      year = {2025},
+      volume = {64},
+      number = {29},
+      doi = {10.1002/anie.202503259},
+      url = {https://onlinelibrary.wiley.com/doi/full/10.1002/anie.202503259}
     }
 
+
+📝 Changelog
+-------------
+
+**02.03.2023 - 0.1.0**
+
+- initial version
+
+**19.03.2023 - 0.2.0**
+
+- Added the possibility to ship and load a pre-trained model with the package so that not training is 
+  necessary to obtain the predictions.
+
+**03.09.2025 - 0.3.0** 
+
+- Fixed a bug which still used the old class indices in the `predict_aggregator` function which 
+  caused the predictions to appear inverted.
+- Updated the `dimorphite_dl` dependency
+- Updated the example scripts
 
 🫱🏻‍🫲🏾 Credits
 -----------
@@ -212,12 +228,10 @@ If you use, extend or otherwise mention or work, please cite `the paper <https:/
   more comparable by packaging canonical graph visualizations directly with the dataset.
 * MEGAN_ Multi-Explanation Graph Attention Network: Is a self-explaining GNN variant, which generates
   attributional explanations along multiple independent channels alongside the primary predictions.
-* KGCNN_ Is a library for the creation of graph neural networks based on the RaggedTensor feature of the
-  Tensorflow/Keras machine learning framework.
 
 .. _PyComex: https://github.com/the16thpythonist/pycomex
 .. _VisualGraphDataset: https://github.com/awa59kst120df/visual_graph_datasets
 .. _MEGAN: https://github.com/awa59kst120df/graph_attention_student
-.. _KGCNN: https://github.com/aimat-lab/gcnn_keras
 
 .. _`paper`: https://arxiv.org/abs/2306.02206
+.. _`angewandte`: https://onlinelibrary.wiley.com/doi/full/10.1002/anie.202503259

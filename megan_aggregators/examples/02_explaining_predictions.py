@@ -9,17 +9,16 @@ processing = load_processing()
 smiles = 'CCC(CCN)CCC'
 graph = processing.process(smiles)
 
-# The model's method "explain_graphs" can be used to create these explanations masks
-# for the input graph.
-# The result of this operation will be the combined node and edge explanation arrays
-# with the following shapes:
+## --- Getting Explanations ---
+# The model's method "forward_graphs" can be used to get the full model output, which 
+# includes not only the predictions but also the explanation masks.
 # node_importances: (number of atoms, 2)
 # edge_importances: (number of bonds, 2)
 info = model.forward_graphs([graph])[0]
 node_importances = info['node_importance']
 edge_importances = info['edge_importance']
 
-# ~ visualizing the explanation
+## --- Visualizing Explanations ---
 # This utility function will visualize the different explanations channels into
 # separate axes within the same figure.
 fig = visualize_explanations(
